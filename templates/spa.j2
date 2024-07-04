@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{% include "head.j2" %}
+
+<body>
+  {# Header #}
+  <header>
+    {# <div id="auth_navbar" hx-get="/auth/auth_navbar" hx-target="#auth_navbar" hx-swap="innerHTML"
+      hx-trigger="load, ReloadNavbar from:body">
+    </div> #}
+  </header>
+
+  {# Content #}
+  <div class="container" id="content_section" hx-get="/htmx/{{page}}" hx-target="#content_section" hx-swap="innerHTML"
+    hx-trigger="load" hx-history-elt>
+  </div>
+
+</body>
+
+</html>
