@@ -24,7 +24,11 @@ struct SpaTemplate {
     page: String,
 }
 
-async fn get_spa(Path(page): Path<String>) -> Html<String> {
+async fn get_spa(Path(page): Path<Option<String>>) -> Html<String> {
+
+    println!("page: {:?}", page);
+    let page = page.unwrap_or_else(|| "content.top".to_string());
+
     let template = SpaTemplate {
         title: page.clone(),
         page: page,
@@ -36,4 +40,5 @@ pub fn create_router() -> ApiRouter {
     ApiRouter::new()
         .api_route("/index", get(index))
         .api_route("/:page", get(get_spa))
-    }
+        // .api_route("/", get(get_spa))
+}
