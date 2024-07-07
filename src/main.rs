@@ -5,7 +5,7 @@ use aide::{
 };
 
 use axum::{
-    response::Html,
+    response::{Html, Redirect},
     Extension, Json,
 };
 
@@ -38,11 +38,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let app = ApiRouter::new()
         .api_route("/", get(index))
-        .nest("/docs", docs_router)
-        .nest("/api", api::create_router(pool.clone()))
-        .nest("/api2", api2::create_router(pool.clone()))
-        .nest("/spa", spa::create_router())
-        .nest("/htmx", htmx::create_router(pool.clone()))
+        .api_route("/docs", get(|| async { Redirect::permanent("/docs/") }))
+        // .api_route("/api", get(|| async { Redirect::permanent("/api/") }))
+        // .api_route("/api2", get(|| async { Redirect::permanent("/api2/") }))
+        .api_route("/spa", get(|| async { Redirect::permanent("/spa/") }))
+        // .api_route("/htmx", get(|| async { Redirect::permanent("/htmx/") }))
+        .nest("/docs/", docs_router)
+        .nest("/api/", api::create_router(pool.clone()))
+        .nest("/api2/", api2::create_router(pool.clone()))
+        .nest("/spa/", spa::create_router())
+        .nest("/htmx/", htmx::create_router(pool.clone()))
         .layer(TraceLayer::new_for_http())
         .with_state(());
 

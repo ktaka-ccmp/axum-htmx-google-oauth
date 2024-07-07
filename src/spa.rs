@@ -4,14 +4,14 @@ use axum::extract::Path;
 use axum::response::Html;
 
 #[derive(Template)]
-#[template(path = "index.j2")]
+#[template(path = "spa_top.j2")]
 struct IndexTemplate {
     title: String,
 }
 
 async fn index() -> Html<String> {
     let index_template = IndexTemplate {
-        title: "Hello, World!".to_string(),
+        title: "Htmx Spa Top(Rust)".to_string(),
     };
     let template = index_template;
     Html(template.render().unwrap())
@@ -24,10 +24,8 @@ struct SpaTemplate {
     page: String,
 }
 
-async fn get_spa(Path(page): Path<Option<String>>) -> Html<String> {
-
+async fn get_spa(Path(page): Path<String>) -> Html<String> {
     println!("page: {:?}", page);
-    let page = page.unwrap_or_else(|| "content.top".to_string());
 
     let template = SpaTemplate {
         title: page.clone(),
@@ -38,7 +36,6 @@ async fn get_spa(Path(page): Path<Option<String>>) -> Html<String> {
 
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
-        .api_route("/index", get(index))
+        .api_route("/", get(index))
         .api_route("/:page", get(get_spa))
-        // .api_route("/", get(get_spa))
 }
