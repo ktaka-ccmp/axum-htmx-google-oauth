@@ -2,7 +2,7 @@ use aide::axum::{routing::get, ApiRouter};
 use askama_axum::Template;
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
 };
 use serde::Serialize;
@@ -18,6 +18,7 @@ pub fn create_router(pool: SqlitePool) -> ApiRouter {
         .api_route("/content.list", get(content_list))
         .api_route("/content.list.tbody", get(content_list_tbody))
         .with_state(pool)
+        .fallback(page_not_found)
 }
 
 /// Represents a template for rendering the content list.
@@ -35,6 +36,17 @@ async fn content_top(headers: HeaderMap) -> Result<Html<String>, Response> {
         title: "Htmx Spa Top".to_string(),
     };
     Ok(Html(template.render().unwrap()))
+}
+
+async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoResponse {
+    check_hx_request(&headers).unwrap();
+    let title = format!("Page not found: {}", uri);
+    println!("Page not found: {:?}", uri);
+    let template = ContentTopTemplate {
+        title: title,
+    };
+    let html = Html(template.render().unwrap());
+    (StatusCode::NOT_FOUND, html).into_response()
 }
 
 /// Represents a template for rendering the content list.
