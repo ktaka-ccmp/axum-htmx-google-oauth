@@ -39,7 +39,9 @@ async fn content_top(headers: HeaderMap) -> Result<Html<String>, Response> {
 }
 
 async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoResponse {
-    check_hx_request(&headers).unwrap();
+    if let Err(err_response) = check_hx_request(&headers) {
+        return err_response;
+    }
     let title = format!("Page not found: {}", uri);
     println!("Page not found: {:?}", uri);
     let template = ContentTopTemplate {
