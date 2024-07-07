@@ -21,7 +21,7 @@ pub fn create_router(pool: SqlitePool) -> ApiRouter {
         .fallback(page_not_found)
 }
 
-/// Represents a template for rendering the content list.
+/// Represents a template for rendering the content.
 #[derive(Template)]
 #[template(path = "content.top.j2")]
 struct ContentTopTemplate {
@@ -38,17 +38,16 @@ async fn content_top(headers: HeaderMap) -> Result<Html<String>, Response> {
     Ok(Html(template.render().unwrap()))
 }
 
-async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoResponse {
-    if let Err(err_response) = check_hx_request(&headers) {
-        return err_response;
-    }
+/// Fallback route for handling 404 - Page Not Found.
+async fn page_not_found(uri: Uri, headers: HeaderMap) -> Result<(StatusCode, Html<String>), Response> {
+    check_hx_request(&headers)?;
+
     let title = format!("Page not found: {}", uri);
     println!("Page not found: {:?}", uri);
     let template = ContentTopTemplate {
-        title: title,
+        title,
     };
-    let html = Html(template.render().unwrap());
-    (StatusCode::NOT_FOUND, html).into_response()
+    Ok((StatusCode::NOT_FOUND, Html(template.render().unwrap())))
 }
 
 /// Represents a template for rendering the content list.
@@ -117,20 +116,14 @@ struct ErrorResponse {
     detail: String,
 }
 
-impl IntoResponse for ErrorResponse {
-    fn into_response(self) -> Response {
-        (StatusCode::BAD_REQUEST, axum::Json(self)).into_response()
-    }
-}
-
 /// Checks if the request is an HX request.
 /// Returns an error response if the request is not an HX request.
 fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
     if headers.get("HX-Request").is_none() {
-        Err(ErrorResponse {
+        let error_response = ErrorResponse {
             detail: "Only HX request is allowed to this endpoint.".to_string(),
-        }
-        .into_response())
+        };
+        Err((StatusCode::BAD_REQUEST, axum::Json(error_response)).into_response())
     } else {
         Ok(())
     }
