@@ -5,10 +5,10 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use sqlx::{Sqlite, Pool};
-    use tower::ServiceExt; // for `app.oneshot()`
     use http_body_util::BodyExt; // for `collect`
     use hyper::body::Bytes;
+    use sqlx::{Pool, Sqlite};
+    use tower::ServiceExt; // for `app.oneshot()`
 
     async fn get_body_bytes(response: axum::response::Response<Body>) -> Bytes {
         response.into_body().collect().await.unwrap().to_bytes()
@@ -129,8 +129,11 @@ mod tests {
                 email TEXT NOT NULL
             );
             INSERT INTO customer (name, email) VALUES ('John Doe', 'john.doe@example.com');
-            "#
-        ).execute(&pool).await.unwrap();
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Create the router
         let app = create_router(pool.clone());
@@ -174,5 +177,92 @@ mod tests {
 
         let body_str = get_body_string(response).await;
         assert!(body_str.contains("Only HX request is allowed to this endpoint."));
+    }
+
+    #[tokio::test]
+    async fn test_fallback_with_hx_request() {
+        // Set up the in-memory SQLite pool
+        let pool = Pool::<Sqlite>::connect(":memory:").await.unwrap();
+
+        // Create the router
+        let app = create_router(pool.clone());
+
+        // Create a request to an invalid path with the HX-Request header
+        let request = Request::builder()
+            .uri("/invalid.path")
+            .header("HX-Request", "true")
+            .body(Body::empty())
+            .unwrap();
+
+        // Send the request
+        let response = app.oneshot(request).await.unwrap();
+
+        // Assert the response status and body
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body_str = get_body_string(response).await;
+        assert!(body_str.contains("Page not found: /invalid.path"));
+    }
+
+    #[tokio::test]
+    async fn test_fallback_without_hx_request() {
+        // Set up the in-memory SQLite pool
+        let pool = Pool::<Sqlite>::connect(":memory:").await.unwrap();
+
+        // Create the router
+        let app = create_router(pool.clone());
+
+        // Create a request to an invalid path without the HX-Request header
+        let request = Request::builder()
+            .uri("/invalid.path")
+            .body(Body::empty())
+            .unwrap();
+
+        // Send the request
+        let response = app.oneshot(request).await.unwrap();
+
+        // Assert the response status and body
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body_str = get_body_string(response).await;
+        assert!(body_str.contains("Only HX request is allowed to this endpoint."));
+    }
+
+    #[tokio::test]
+    async fn test_content_list_tbody_with_invalid_hx_request() {
+        // Set up the in-memory SQLite pool and create a test customer table
+        let pool = Pool::<Sqlite>::connect(":memory:").await.unwrap();
+        sqlx::query(
+            r#"
+            CREATE TABLE customer (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL
+            );
+            INSERT INTO customer (name, email) VALUES ('John Doe', 'john.doe@example.com');
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Create the router
+        let app = create_router(pool.clone());
+
+        // Create a request with the HX-Request header and invalid query parameters
+        let request = Request::builder()
+            .uri("/content.list.tbody?skip=invalid&limit=invalid")
+            .header("HX-Request", "true")
+            .body(Body::empty())
+            .unwrap();
+
+        // Send the request
+        let response = app.oneshot(request).await.unwrap();
+
+        // Assert the response status and body
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body_str = get_body_string(response).await;
+        assert!(body_str.contains("invalid digit found in string"));
     }
 }

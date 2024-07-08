@@ -40,7 +40,7 @@ mod tests {
         let app = create_router(pool.clone());
 
         let request = Request::builder()
-            .uri("/customers")
+            .uri("/customers?limit=2")
             .body(Body::empty())
             .unwrap();
 

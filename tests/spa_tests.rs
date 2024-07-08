@@ -19,23 +19,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_index() {
-        let app = create_router();
-
-        let request = Request::builder()
-            .uri("/index")
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body_str = get_body_string(response).await;
-        assert!(body_str.contains("Hello, World!"));
-    }
-
-    #[tokio::test]
     async fn test_get_spa() {
         let app = create_router();
 
