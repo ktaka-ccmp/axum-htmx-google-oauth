@@ -1,4 +1,4 @@
-use aide::axum::{routing::get, ApiRouter};
+use aide::axum::{routing::get, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
     extract::{Query, State},
@@ -29,25 +29,29 @@ struct ContentTopTemplate {
 }
 
 /// Handles the content list request.
-async fn content_top(headers: HeaderMap) -> Result<Html<String>, Response> {
-    check_hx_request(&headers)?;
+async fn content_top(headers: HeaderMap) -> impl IntoApiResponse {
+    if let Err(err) = check_hx_request(&headers) {
+        return err;
+    }
 
     let template = ContentTopTemplate {
         title: "Htmx Spa Top".to_string(),
     };
-    Ok(Html(template.render().unwrap()))
+    (StatusCode::OK, Html(template.render().unwrap())).into_response()
+    // The following line also works:
+    // Html(template.render().unwrap()).into_response()
 }
 
 /// Fallback route for handling 404 - Page Not Found.
-async fn page_not_found(uri: Uri, headers: HeaderMap) -> Result<(StatusCode, Html<String>), Response> {
-    check_hx_request(&headers)?;
+async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoApiResponse {
+    if let Err(err) = check_hx_request(&headers) {
+        return err;
+    }
 
     let title = format!("Page not found: {}", uri);
     println!("Page not found: {:?}", uri);
-    let template = ContentTopTemplate {
-        title,
-    };
-    Ok((StatusCode::NOT_FOUND, Html(template.render().unwrap())))
+    let template = ContentTopTemplate { title };
+    (StatusCode::NOT_FOUND, Html(template.render().unwrap())).into_response()
 }
 
 /// Represents a template for rendering the content list.
@@ -60,15 +64,17 @@ struct ContentListTemplate {
 }
 
 /// Handles the content list request.
-async fn content_list(headers: HeaderMap) -> Result<Html<String>, Response> {
-    check_hx_request(&headers)?;
+async fn content_list(headers: HeaderMap) -> impl IntoApiResponse {
+    if let Err(err) = check_hx_request(&headers) {
+        return err;
+    }
 
     let template = ContentListTemplate {
         title: "Incremental hx-get demo".to_string(),
         skip_next: 0,
         limit: 2,
     };
-    Ok(Html(template.render().unwrap()))
+    (StatusCode::OK, Html(template.render().unwrap())).into_response()
 }
 
 /// Represents a template for rendering the content list table body.
@@ -85,21 +91,26 @@ async fn content_list_tbody(
     Query(params): Query<Params>,
     State(pool): State<SqlitePool>,
     headers: HeaderMap,
-) -> Result<Html<String>, Response> {
-    check_hx_request(&headers)?;
+) -> impl IntoApiResponse {
+    if let Err(err) = check_hx_request(&headers) {
+        return err;
+    }
 
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(1);
 
-    let customers = sqlx::query_as::<_, Customer>("SELECT * FROM customer LIMIT ? OFFSET ?")
+    let customers = match sqlx::query_as::<_, Customer>("SELECT * FROM customer LIMIT ? OFFSET ?")
         .bind(limit)
         .bind(skip)
         .fetch_all(&pool)
         .await
-        .map_err(|e| {
+    {
+        Ok(customers) => customers,
+        Err(e) => {
             error!("Database error: {:?}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
-        })?;
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response();
+        }
+    };
 
     let template = ContentListTbodyTemplate {
         skip_next: skip + limit,
@@ -107,7 +118,7 @@ async fn content_list_tbody(
         customers,
     };
 
-    Ok(Html(template.render().unwrap()))
+    (StatusCode::OK, Html(template.render().unwrap())).into_response()
 }
 
 /// Represents an error response.
