@@ -43,7 +43,7 @@ async fn content_top(headers: HeaderMap) -> impl IntoApiResponse {
 }
 
 /// Fallback route for handling 404 - Page Not Found.
-async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoApiResponse {
+pub async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoApiResponse {
     if let Err(err) = check_hx_request(&headers) {
         return err;
     }
@@ -129,7 +129,7 @@ struct ErrorResponse {
 
 /// Checks if the request is an HX request.
 /// Returns an error response if the request is not an HX request.
-fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
+pub fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
     if headers.get("HX-Request").is_none() {
         let error_response = ErrorResponse {
             detail: "Only HX request is allowed to this endpoint.".to_string(),

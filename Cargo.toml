@@ -7,15 +7,16 @@ edition = "2021"
 aide = { version = "0.13.4", features = ["axum", "scalar", "axum-extra-query", "axum-headers"] }
 askama = { version = "0.12.1", features = ["with-axum"] }
 askama_axum = "0.4.0"
-axum = "0.7.5"
+axum = { version = "0.7.5", features = ["multipart"] }
 dotenv = "0.15.0"
 futures = "0.3.30"
+mime_guess = "2.0.5"
 schemars = "0.8.21"
 serde = "1.0.203"
 sqlx = { version = "0.7.4", features = ["sqlite", "runtime-tokio-rustls"] }
 thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = ["full"] }
-tower-http = { version = "0.5.2", features = ["trace"] }
+tower-http = { version = "0.5.2", features = ["fs", "trace"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 
