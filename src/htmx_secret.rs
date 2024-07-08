@@ -1,4 +1,4 @@
-use aide::axum::{routing::get, ApiRouter, IntoApiResponse};
+use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
     http::{HeaderMap, StatusCode},
@@ -9,9 +9,15 @@ use crate::htmx::check_hx_request;
 
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
-        .api_route("/content.secret1", get(content_secret1))
-        .api_route("/content.secret2", get(content_secret2))
-        // .fallback(page_not_found)
+        .api_route(
+            "/content.secret1",
+            get_with(content_secret1, |op| op.tag("htmx_secret")),
+        )
+        .api_route(
+            "/content.secret2",
+            get_with(content_secret2, |op| op.tag("htmx_secret")),
+        )
+    // .fallback(page_not_found)
 }
 
 #[derive(Template)]

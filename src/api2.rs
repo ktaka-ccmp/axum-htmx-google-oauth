@@ -1,4 +1,4 @@
-use aide::axum::{routing::get, ApiRouter};
+use aide::axum::{routing::get_with, ApiRouter};
 use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
@@ -55,7 +55,7 @@ pub async fn customer(
 
 pub fn create_router(pool: SqlitePool) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/customers", get(customers))
-        .api_route("/customer/:id", get(customer))
+        .api_route("/customers", get_with(customers, |op| op.tag("api")))
+        .api_route("/customer/:id", get_with(customer, |op| op.tag("api")))
         .with_state(pool)
 }
