@@ -11,7 +11,7 @@ use tokio::io::AsyncReadExt;
 use tower_http::services::ServeFile;
 
 // vec of file paths, routes, tags, and descriptions
-fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+pub fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
     vec![
         ("images/dog_meme.png", "/secret1.png", "image", "Secret file"),
         ("images/cat_meme.png", "/secret2.png", "image", "Secret file"),
