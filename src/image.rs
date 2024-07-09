@@ -10,18 +10,34 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tower_http::services::ServeFile;
 
-pub fn create_router() -> ApiRouter {
-    let routes = vec![
+fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+    vec![
         ("images/dog_meme.png", "/secret1.png", "image", "Secret file"),
         ("images/cat_meme.png", "/secret2.png", "image", "Secret file"),
         ("images/unknown-person-icon.png", "/icon.png", "image", "Icon for anonymous user"),
         ("images/door-check-out-icon.png", "/logout.png", "image", "Logout icon"),
         ("images/admin_icon.webp", "/admin_icon.webp", "image", "Admin icon"),
-    ];
+    ]
+}
+
+pub fn create_router() -> ApiRouter {
+    let routes = get_routes();
 
     let mut router = ApiRouter::new();
-    for (file_path, route, tag, description) in routes {
+    for (file_path, route, tag, description) in &routes {
         router = router.api_route(route, get_image_route(file_path, tag, description));
+    }
+
+    router
+}
+
+// Unused old create_router function using axum::Router
+pub fn _create_router() -> Router {
+    let routes = get_routes();
+
+    let mut router = Router::new();
+    for (file_path, route, _, _) in &routes {
+        router = router.route(route, get_service(ServeFile::new(file_path)));
     }
 
     router
@@ -69,22 +85,4 @@ fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
         .header("Content-Type", HeaderValue::from_str(&mime_type).unwrap())
         .body(Body::from(contents))
         .unwrap()
-}
-
-// Alternative implementation using tower_http::services::ServeFile
-pub fn _create_router_with_servefile() -> Router {
-    let routes = vec![
-        ("images/dog_meme.png", "/secret1.png"),
-        ("images/cat_meme.png", "/secret2.png"),
-        ("images/unknown-person-icon.png", "/icon.png"),
-        ("images/door-check-out-icon.png", "/logout.png"),
-        ("images/admin_icon.webp", "/admin_icon.webp"),
-    ];
-
-    let mut router = Router::new();
-    for (file_path, route) in routes {
-        router = router.route(route, get_service(ServeFile::new(file_path)));
-    }
-
-    router
 }
