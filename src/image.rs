@@ -12,11 +12,36 @@ use tower_http::services::ServeFile;
 // vec of file paths, routes, tags, and descriptions
 pub fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
     vec![
-        ("images/dog_meme.png", "/secret1.png", "image", "Secret file"),
-        ("images/cat_meme.png", "/secret2.png", "image", "Secret file"),
-        ("images/unknown-person-icon.png", "/icon.png", "image", "Icon for anonymous user"),
-        ("images/door-check-out-icon.png", "/logout.png", "image", "Logout icon"),
-        ("images/admin_icon.webp", "/admin_icon.webp", "image", "Admin icon"),
+        (
+            "images/dog_meme.png",
+            "/secret1.png",
+            "image",
+            "Secret file",
+        ),
+        (
+            "images/cat_meme.png",
+            "/secret2.png",
+            "image",
+            "Secret file",
+        ),
+        (
+            "images/unknown-person-icon.png",
+            "/icon.png",
+            "image",
+            "Icon for anonymous user",
+        ),
+        (
+            "images/door-check-out-icon.png",
+            "/logout.png",
+            "image",
+            "Logout icon",
+        ),
+        (
+            "images/admin_icon.webp",
+            "/admin_icon.webp",
+            "image",
+            "Admin icon",
+        ),
     ]
 }
 
@@ -43,7 +68,11 @@ pub fn _create_router() -> Router {
     router
 }
 
-fn get_image_route(path: &'static str, tag: &'static str, description: &'static str) -> ApiMethodRouter {
+fn get_image_route(
+    path: &'static str,
+    tag: &'static str,
+    description: &'static str,
+) -> ApiMethodRouter {
     get_with(
         move || async move { serve_file(path).await },
         move |op| op.tag(tag).description(description),

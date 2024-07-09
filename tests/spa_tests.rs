@@ -5,9 +5,9 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt; // for `app.oneshot()`
     use http_body_util::BodyExt; // for `collect`
     use hyper::body::Bytes;
+    use tower::ServiceExt; // for `app.oneshot()`
 
     async fn get_body_bytes(response: axum::response::Response<Body>) -> Bytes {
         response.into_body().collect().await.unwrap().to_bytes()

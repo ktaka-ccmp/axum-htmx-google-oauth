@@ -4,10 +4,7 @@ use aide::{
     scalar::Scalar,
 };
 
-use axum::{
-    response::Redirect,
-    Extension, Json,
-};
+use axum::{response::Redirect, Extension, Json};
 
 use dotenv::dotenv;
 use sqlx::sqlite::SqlitePool as Pool;
@@ -19,9 +16,9 @@ mod api;
 mod api2;
 mod htmx;
 mod htmx_secret;
-mod spa;
-mod models;
 mod image;
+mod models;
+mod spa;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,9 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let docs_router = ApiRouter::new()
         .route("/", Scalar::new("/docs/api.json").axum_route())
         .route("/api.json", get(serve_api));
-    
+
     let app = ApiRouter::new()
-        .api_route("/", get(|| async { Redirect::permanent("/spa")}))
+        .api_route("/", get(|| async { Redirect::permanent("/spa") }))
         .api_route("/docs/", get(|| async { Redirect::permanent("/docs") }))
         .api_route("/spa/", get(|| async { Redirect::permanent("/spa") }))
         .api_route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))

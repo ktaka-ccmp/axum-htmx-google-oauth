@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
     use aide::axum::ApiRouter;
+    use api_server_htmx::htmx_secret::create_router;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
-    use tower::ServiceExt; // for `oneshot` method
-    use api_server_htmx::htmx_secret::create_router;
-    use http_body_util::BodyExt; // for `collect`
-    
+    use http_body_util::BodyExt;
+    use tower::ServiceExt; // for `oneshot` method // for `collect`
+
     async fn send_request(router: &ApiRouter, uri: &str) -> Response {
         let request = Request::builder()
             .uri(uri)
@@ -30,10 +30,7 @@ mod tests {
     }
 
     async fn assert_response_not_ok(router: &ApiRouter, uri: &str) {
-        let request = Request::builder()
-            .uri(uri)
-            .body(Body::empty())
-            .unwrap();
+        let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
 
         let response = router.clone().oneshot(request).await.unwrap();
         assert_ne!(response.status(), StatusCode::OK);
@@ -44,8 +41,18 @@ mod tests {
         let router = create_router();
         dotenv::dotenv().ok();
         let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
-        assert_response_contains(&router, "/content.secret1", &format!("{}/img/secret1.png", origin_server)).await;
-        assert_response_contains(&router, "/content.secret1", "Oops, my secret&#x27;s been revealed!").await;
+        assert_response_contains(
+            &router,
+            "/content.secret1",
+            &format!("{}/img/secret1.png", origin_server),
+        )
+        .await;
+        assert_response_contains(
+            &router,
+            "/content.secret1",
+            "Oops, my secret&#x27;s been revealed!",
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -53,8 +60,18 @@ mod tests {
         let router = create_router();
         dotenv::dotenv().ok();
         let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
-        assert_response_contains(&router, "/content.secret2", &format!("{}/img/secret2.png", origin_server)).await;
-        assert_response_contains(&router, "/content.secret2", "Believe it or not, it&#x27;s absolutely not me!").await;
+        assert_response_contains(
+            &router,
+            "/content.secret2",
+            &format!("{}/img/secret2.png", origin_server),
+        )
+        .await;
+        assert_response_contains(
+            &router,
+            "/content.secret2",
+            "Believe it or not, it&#x27;s absolutely not me!",
+        )
+        .await;
     }
 
     #[tokio::test]

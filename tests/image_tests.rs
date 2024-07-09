@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
-    
+
     // use api_server_htmx::image::create_router;
+    use aide::axum::ApiRouter;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use tower::ServiceExt; // for `app.oneshot()`
     use std::sync::Once;
-    use aide::axum::ApiRouter;
-    
+    use tower::ServiceExt; // for `app.oneshot()`
+
     // Initialize logging for tests
     static INIT: Once = Once::new();
     fn init_logging() {
