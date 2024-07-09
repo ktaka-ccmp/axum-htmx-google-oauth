@@ -60,3 +60,30 @@ fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
         .unwrap()
 }
 
+use axum::routing::get_service;
+use axum::Router;
+use tower_http::services::ServeFile;
+
+pub fn _create_router() -> Router {
+    Router::new()
+        .route(
+            "/secret1.png",
+            get_service(ServeFile::new("images/dog_meme.png")),
+        )
+        .route(
+            "/secret2.png",
+            get_service(ServeFile::new("images/cat_meme.png")),
+        )
+        .route(
+            "/icon.png",
+            get_service(ServeFile::new("images/unknown-person-icon.png")),
+        )
+        .route(
+            "/logout.png",
+            get_service(ServeFile::new("images/door-check-out-icon.png")),
+        )
+        .route(
+            "/admin_icon.webp",
+            get_service(ServeFile::new("images/admin_icon.webp")),
+        )
+}
