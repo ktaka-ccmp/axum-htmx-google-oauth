@@ -1,102 +1,62 @@
-use aide::axum::routing::get_with;
+use aide::axum::routing::{get_with, ApiMethodRouter};
 use aide::axum::ApiRouter;
-use aide::axum::IntoApiResponse;
-
 use axum::body::Body;
-use axum::response::Response;
-
+use axum::http::{HeaderValue, Response, StatusCode};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use mime_guess::from_path;
+use log;
 
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
-        .api_route(
-            "/secret1.png",
-            get_with(
-                || async { serve_file("images/dog_meme.png").await },
-                |op| op.tag("image"),
-            ),
-        )
-        .api_route(
-            "/secret2.png",
-            get_with(
-                || async { serve_file("images/cat_meme.png").await },
-                |op| op.tag("image"),
-            ),
-        )
-        .api_route(
-            "/icon.png",
-            get_with(
-                || async { serve_file("images/unknown-person-icon.png").await },
-                |op| op.tag("image"),
-            ),
-        )
-        .api_route(
-            "/logout.png",
-            get_with(
-                || async { serve_file("images/door-check-out-icon.png").await },
-                |op| op.tag("image"),
-            ),
-        )
-        .api_route(
-            "/admin_icon.webp",
-            get_with(
-                || async { serve_file("images/admin_icon.webp").await },
-                |op| op.tag("image"),
-            ),
-        )
+        .api_route("/secret1.png", get_image_route("images/dog_meme.png", "image", "Secret file"))
+        .api_route("/secret2.png", get_image_route("images/cat_meme.png", "image", "Secret file"))
+        .api_route("/icon.png", get_image_route("images/unknown-person-icon.png", "image", "Icon for anonymous user"))
+        .api_route("/logout.png", get_image_route("images/door-check-out-icon.png", "image", "Logout icon"))
+        .api_route("/admin_icon.webp", get_image_route("images/admin_icon.webp", "image", "Admin icon"))
 }
 
-async fn serve_file(path: &str) -> impl IntoApiResponse {
-    let mut file = match File::open(path).await {
-        Ok(file) => file,
-        Err(_) => {
-            return Response::builder()
-                .status(404)
-                .body("File not found".into())
-                .unwrap()
-        }
-    };
+fn get_image_route(path: &'static str, tag: &'static str, description: &'static str) -> ApiMethodRouter {
+    get_with(
+        move || async move { serve_file(path).await },
+        move |op| op.tag(tag).description(description),
+    )
+}
 
-    let mut contents: Vec<u8> = vec![];
-    if let Err(_) = file.read_to_end(&mut contents).await {
-        return Response::builder()
-            .status(500)
-            .body("Error reading file".into())
-            .unwrap();
+async fn serve_file(path: &str) -> Result<Response<Body>, Response<Body>> {
+    match read_file(path).await {
+        Ok((contents, mime_type)) => Ok(build_response(contents, mime_type)),
+        Err(response) => Err(response),
     }
+}
 
+async fn read_file(path: &str) -> Result<(Vec<u8>, String), Response<Body>> {
+    let mut file = File::open(path).await.map_err(|_| {
+        log::error!("Failed to open file: {}", path);
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from(format!("File not found: {}", path)))
+            .unwrap()
+    })?;
+
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents).await.map_err(|_| {
+        log::error!("Error reading file: {}", path);
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::from(format!("Error reading file: {}", path)))
+            .unwrap()
+    })?;
+
+    let mime_type = from_path(path).first_or_octet_stream().as_ref().to_string();
+    Ok((contents, mime_type))
+}
+
+fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
     Response::builder()
-        .status(200)
-        .header("Content-Type", "image/png")
+        .status(StatusCode::OK)
+        .header("Content-Type", HeaderValue::from_str(&mime_type).unwrap())
         .body(Body::from(contents))
         .unwrap()
 }
 
-use axum::routing::get_service;
-use axum::Router;
-use tower_http::services::ServeFile;
-
-pub fn _create_router() -> Router {
-    Router::new()
-        .route(
-            "/secret1.png",
-            get_service(ServeFile::new("images/dog_meme.png")),
-        )
-        .route(
-            "/secret2.png",
-            get_service(ServeFile::new("images/cat_meme.png")),
-        )
-        .route(
-            "/icon.png",
-            get_service(ServeFile::new("images/unknown-person-icon.png")),
-        )
-        .route(
-            "/logout.png",
-            get_service(ServeFile::new("images/door-check-out-icon.png")),
-        )
-        .route(
-            "/admin_icon.webp",
-            get_service(ServeFile::new("images/admin_icon.webp")),
-        )
-}
