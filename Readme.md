@@ -54,7 +54,7 @@ DROP TABLE customer;
 ```text
 cargo add axum dotenv serde thiserror tracing tracing-subscriber schemars
 cargo add tokio --features=full
-cargo add tower-http --features=trace
+cargo add tower-http --features=trace,fs
 cargo add sqlx --features sqlite,runtime-tokio-rustls
 cargo add aide --features=axum,scalar,axum-extra-query,axum-headers
 cargo add askama_axum

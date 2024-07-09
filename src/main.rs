@@ -19,8 +19,10 @@ use tracing_subscriber;
 mod api;
 mod api2;
 mod htmx;
+mod htmx_secret;
 mod spa;
 mod models;
+mod image;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,6 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/api2", api2::create_router(pool.clone()))
         .nest("/spa", spa::create_router())
         .nest("/htmx", htmx::create_router(pool.clone()))
+        .nest("/htmx", htmx_secret::create_router())
+        .nest("/img", image::create_router())
+        // .nest_service("/img", image::create_router())
         .layer(TraceLayer::new_for_http())
         .with_state(());
 

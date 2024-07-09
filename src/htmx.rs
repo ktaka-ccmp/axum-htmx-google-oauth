@@ -1,4 +1,4 @@
-use aide::axum::{routing::get, ApiRouter, IntoApiResponse};
+use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
     extract::{Query, State},
@@ -14,9 +14,12 @@ use crate::models::{Customer, Params};
 /// Creates the API router with the given SQLite pool.
 pub fn create_router(pool: SqlitePool) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/content.top", get(content_top))
-        .api_route("/content.list", get(content_list))
-        .api_route("/content.list.tbody", get(content_list_tbody))
+        .api_route("/content.top", get_with(content_top, |op| op.tag("htmx")))
+        .api_route("/content.list", get_with(content_list, |op| op.tag("htmx")))
+        .api_route(
+            "/content.list.tbody",
+            get_with(content_list_tbody, |op| op.tag("htmx")),
+        )
         .with_state(pool)
         .fallback(page_not_found)
 }
@@ -129,7 +132,7 @@ struct ErrorResponse {
 
 /// Checks if the request is an HX request.
 /// Returns an error response if the request is not an HX request.
-fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
+pub fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
     if headers.get("HX-Request").is_none() {
         let error_response = ErrorResponse {
             detail: "Only HX request is allowed to this endpoint.".to_string(),

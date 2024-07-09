@@ -1,4 +1,4 @@
-use aide::axum::{routing::get, ApiRouter, IntoApiResponse};
+use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -40,7 +40,6 @@ pub async fn customer(
     Path(cid): Path<CustomerId>,
     State(pool): State<SqlitePool>,
 ) -> impl IntoApiResponse {
-
     let customer_result = sqlx::query_as::<_, Customer>("SELECT * FROM customer WHERE id = ?")
         .bind(cid.id)
         .fetch_one(&pool)
@@ -49,11 +48,13 @@ pub async fn customer(
     match customer_result {
         Ok(customer) => (StatusCode::OK, Json(customer)).into_response(),
         Err(e) => match e {
-            sqlx::Error::RowNotFound => {
-                (StatusCode::NOT_FOUND, Json(Error {
+            sqlx::Error::RowNotFound => (
+                StatusCode::NOT_FOUND,
+                Json(Error {
                     error: "Customer not found".to_string(),
-                })).into_response()
-            },
+                }),
+            )
+                .into_response(),
             _ => {
                 error!("Database error: {:?}", e);
                 let error_response = Error {
@@ -67,7 +68,7 @@ pub async fn customer(
 
 pub fn create_router(pool: SqlitePool) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/customers", get(customers))
-        .api_route("/customer/:id", get(customer))
+        .api_route("/customers", get_with(customers, |op| op.tag("api")))
+        .api_route("/customer/:id", get_with(customer, |op| op.tag("api")))
         .with_state(pool)
 }
