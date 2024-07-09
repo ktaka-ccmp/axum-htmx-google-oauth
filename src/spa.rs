@@ -29,7 +29,7 @@ async fn get_spa(Path(page): Path<String>) -> Html<String> {
 
     let template = SpaTemplate {
         title: page.clone(),
-        page: page,
+        page,
     };
     Html(template.render().unwrap())
 }

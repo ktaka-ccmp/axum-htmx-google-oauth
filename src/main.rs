@@ -14,7 +14,6 @@ use sqlx::sqlite::SqlitePool as Pool;
 use std::net::SocketAddr;
 
 use tower_http::trace::TraceLayer;
-use tracing_subscriber;
 
 mod api;
 mod api2;

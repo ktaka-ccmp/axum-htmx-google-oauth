@@ -4,7 +4,6 @@ use axum::body::Body;
 use axum::http::{HeaderValue, Response, StatusCode};
 use axum::routing::get_service;
 use axum::Router;
-use log;
 use mime_guess::from_path;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
