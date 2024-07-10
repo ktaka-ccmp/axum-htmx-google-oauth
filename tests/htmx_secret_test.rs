@@ -44,7 +44,7 @@ mod tests {
         assert_response_contains(
             &router,
             "/content.secret1",
-            &format!("{}/img/secret1.png", origin_server),
+            &format!("{}/asset/secret1.png", origin_server),
         )
         .await;
         assert_response_contains(
@@ -63,7 +63,7 @@ mod tests {
         assert_response_contains(
             &router,
             "/content.secret2",
-            &format!("{}/img/secret2.png", origin_server),
+            &format!("{}/asset/secret2.png", origin_server),
         )
         .await;
         assert_response_contains(

@@ -14,9 +14,9 @@ use tower_http::trace::TraceLayer;
 
 mod api;
 mod api2;
+mod asset;
 mod htmx;
 mod htmx_secret;
-mod image;
 mod models;
 mod spa;
 
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/spa", spa::create_router())
         .nest("/htmx", htmx::create_router(pool.clone()))
         .nest("/htmx", htmx_secret::create_router())
-        .nest("/img", image::create_router())
+        .nest("/asset", asset::create_router())
         // .nest_service("/img", image::create_router())
         .layer(TraceLayer::new_for_http())
         .with_state(());

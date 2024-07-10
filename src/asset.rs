@@ -8,35 +8,36 @@ pub fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static s
     // vec of file paths, routes, tags, and descriptions
     vec![
         (
-            "images/dog_meme.png",
+            "assets/dog_meme.png",
             "/secret1.png",
             "image",
             "Secret file",
         ),
         (
-            "images/cat_meme.png",
+            "assets/cat_meme.png",
             "/secret2.png",
             "image",
             "Secret file",
         ),
         (
-            "images/unknown-person-icon.png",
+            "assets/unknown-person-icon.png",
             "/icon.png",
             "image",
             "Icon for anonymous user",
         ),
         (
-            "images/door-check-out-icon.png",
+            "assets/door-check-out-icon.png",
             "/logout.png",
             "image",
             "Logout icon",
         ),
         (
-            "images/admin_icon.webp",
+            "assets/admin_icon.webp",
             "/admin_icon.webp",
             "image",
             "Admin icon",
         ),
+        ("assets/index.html", "/index.html", "html", ""),
     ]
 }
 
@@ -44,12 +45,18 @@ pub fn create_router() -> ApiRouter {
     let routes = get_routes();
 
     let mut router = ApiRouter::new();
-    for (file_path, route, tag, description) in routes {
+    for (file_path, route, tag, _description) in routes {
+        let description = file_path;
+        let desc = if description.is_empty() {
+            file_path
+        } else {
+            description
+        };
         router = router.api_route(
             route,
             get_with(
                 move || get_handler(file_path),
-                move |op| op.tag(tag).description(description),
+                move |op| op.tag(tag).description(desc),
             ),
         );
     }

@@ -19,14 +19,14 @@ mod tests {
     // Create the test router
     async fn test_router() -> ApiRouter {
         init_logging();
-        api_server_htmx::image::create_router().into()
+        api_server_htmx::asset::create_router().into()
     }
 
     #[tokio::test]
     async fn test_image_routes() {
         let router = test_router().await;
 
-        let routes = api_server_htmx::image::get_routes();
+        let routes = api_server_htmx::asset::get_routes();
 
         for (_, route, _, _) in &routes {
             let response = router
