@@ -1,5 +1,6 @@
 use aide::axum::routing::{get_with, ApiMethodRouter};
 use aide::axum::ApiRouter;
+use aide::axum::IntoApiResponse;
 use axum::body::Body;
 use axum::http::{HeaderValue, Response, StatusCode};
 use axum::routing::get_service;
@@ -79,7 +80,7 @@ fn get_image_route(
     )
 }
 
-async fn serve_file(path: &str) -> Result<Response<Body>, Response<Body>> {
+async fn serve_file(path: &str) -> impl IntoApiResponse {
     match read_file(path).await {
         Ok((contents, mime_type)) => Ok(build_response(contents, mime_type)),
         Err(response) => Err(response),
@@ -108,7 +109,7 @@ async fn read_file(path: &str) -> Result<(Vec<u8>, String), Response<Body>> {
     Ok((contents, mime_type))
 }
 
-fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
+fn build_response(contents: Vec<u8>, mime_type: String) -> impl IntoApiResponse {
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", HeaderValue::from_str(&mime_type).unwrap())
