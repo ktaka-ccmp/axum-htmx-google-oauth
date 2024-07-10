@@ -20,7 +20,6 @@ pub struct Error {
     pub error: String,
 }
 
-
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct Params {
     pub skip: Option<i32>,

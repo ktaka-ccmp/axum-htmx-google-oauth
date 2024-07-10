@@ -4,25 +4,21 @@ use aide::{
     scalar::Scalar,
 };
 
-use axum::{
-    response::Redirect,
-    Extension, Json,
-};
+use axum::{response::Redirect, Extension, Json};
 
 use dotenv::dotenv;
 use sqlx::sqlite::SqlitePool as Pool;
 use std::net::SocketAddr;
 
 use tower_http::trace::TraceLayer;
-use tracing_subscriber;
 
 mod api;
 mod api2;
+mod asset;
 mod htmx;
 mod htmx_secret;
-mod spa;
 mod models;
-mod image;
+mod spa;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,9 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let docs_router = ApiRouter::new()
         .route("/", Scalar::new("/docs/api.json").axum_route())
         .route("/api.json", get(serve_api));
-    
+
     let app = ApiRouter::new()
-        .api_route("/", get(|| async { Redirect::permanent("/spa")}))
+        .api_route("/", get(|| async { Redirect::permanent("/spa") }))
         .api_route("/docs/", get(|| async { Redirect::permanent("/docs") }))
         .api_route("/spa/", get(|| async { Redirect::permanent("/spa") }))
         .api_route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))
@@ -49,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/spa", spa::create_router())
         .nest("/htmx", htmx::create_router(pool.clone()))
         .nest("/htmx", htmx_secret::create_router())
-        .nest("/img", image::create_router())
+        .nest("/asset", asset::create_router())
         // .nest_service("/img", image::create_router())
         .layer(TraceLayer::new_for_http())
         .with_state(());

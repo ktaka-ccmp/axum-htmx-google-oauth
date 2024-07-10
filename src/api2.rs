@@ -1,9 +1,9 @@
 use aide::axum::{routing::get_with, ApiRouter};
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
-    http::StatusCode,
 };
 use sqlx::SqlitePool;
 

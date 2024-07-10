@@ -36,7 +36,7 @@ async fn content_secret1(headers: HeaderMap) -> impl IntoApiResponse {
 
     let template = ContentSecretTemplate {
         title: "Oops, my secret's been revealed!".to_string(),
-        img_url: format!("{}/img/secret1.png", origin_server),
+        img_url: format!("{}/asset/secret1.png", origin_server),
     };
     (StatusCode::OK, Html(template.render().unwrap())).into_response()
 }
@@ -50,7 +50,7 @@ async fn content_secret2(headers: HeaderMap) -> impl IntoApiResponse {
 
     let template = ContentSecretTemplate {
         title: "Believe it or not, it's absolutely not me!".to_string(),
-        img_url: format!("{}/img/secret2.png", origin_server),
+        img_url: format!("{}/asset/secret2.png", origin_server),
     };
     (StatusCode::OK, Html(template.render().unwrap())).into_response()
 }
