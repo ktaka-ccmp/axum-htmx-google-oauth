@@ -52,7 +52,7 @@ DROP TABLE customer;
 ### Add dependency
 
 ```text
-cargo add axum dotenv serde thiserror tracing tracing-subscriber schemars
+cargo add axum dotenv serde thiserror tracing tracing-subscriber schemars infer
 cargo add tokio --features=full
 cargo add tower-http --features=trace,fs
 cargo add sqlx --features sqlite,runtime-tokio-rustls
