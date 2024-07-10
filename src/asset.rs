@@ -64,7 +64,7 @@ pub fn create_router() -> ApiRouter {
     router
 }
 
-async fn get_handler(file_path: &str) -> impl IntoApiResponse {
+pub async fn get_handler(file_path: &str) -> impl IntoApiResponse {
     match read(file_path) {
         Ok(contents) => {
             let mime_type = infer::get(&contents)
@@ -77,7 +77,7 @@ async fn get_handler(file_path: &str) -> impl IntoApiResponse {
     }
 }
 
-fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
+pub fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", HeaderValue::from_str(&mime_type).unwrap())
@@ -85,7 +85,7 @@ fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
         .unwrap()
 }
 
-fn build_error_response(status: StatusCode, message: &str) -> Response<Body> {
+pub fn build_error_response(status: StatusCode, message: &str) -> Response<Body> {
     Response::builder()
         .status(status)
         .header("Content-Type", HeaderValue::from_static("text/plain"))
