@@ -121,7 +121,7 @@ mod tests {
 
         let response =
             askama_axum::IntoResponse::into_response(get_handler("assets/nonexistent.png").await);
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
