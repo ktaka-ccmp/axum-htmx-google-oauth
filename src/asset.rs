@@ -3,6 +3,7 @@ use aide::axum::{ApiRouter, IntoApiResponse};
 use axum::body::Body;
 use axum::http::{HeaderValue, Response, StatusCode};
 use std::io::{Error, ErrorKind};
+use std::path::Path;
 use tracing::error;
 
 pub fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
@@ -75,11 +76,20 @@ pub async fn get_handler(file_path: &str) -> impl IntoApiResponse {
 }
 
 async fn read_file_and_detect_mime(file_path: &str) -> Result<(Vec<u8>, String), Error> {
+    if !is_safe_path(file_path) {
+        return Err(Error::new(ErrorKind::PermissionDenied, "Unsafe path"));
+    }
+
     let contents = tokio::fs::read(file_path).await?;
     let mime_type = mime_guess::from_path(file_path)
         .first_or_octet_stream()
         .to_string();
     Ok((contents, mime_type))
+}
+
+fn is_safe_path(file_path: &str) -> bool {
+    let path = Path::new(file_path);
+    path.is_relative() && !path.starts_with("..") && !path.to_string_lossy().contains("..")
 }
 
 pub fn build_response(contents: Vec<u8>, mime_type: String) -> Response<Body> {
