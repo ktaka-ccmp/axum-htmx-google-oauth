@@ -11,7 +11,7 @@ use tracing::error;
 use crate::models::{Customer, CustomerId, Error, Params};
 
 // Fixed duplicate function definition by removing the second, incomplete definition
-pub async fn customers(
+async fn customers(
     Query(params): Query<Params>,
     State(pool): State<SqlitePool>,
 ) -> impl IntoApiResponse {
@@ -36,7 +36,7 @@ pub async fn customers(
     }
 }
 
-pub async fn customer(
+async fn customer(
     Path(cid): Path<CustomerId>,
     State(pool): State<SqlitePool>,
 ) -> impl IntoApiResponse {
