@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 
 use crate::models::{Customer, CustomerId, Error, Params};
 
-pub async fn customers(
+async fn customers(
     Query(params): Query<Params>,
     State(pool): State<SqlitePool>,
 ) -> Result<Json<Vec<Customer>>, Response> {
@@ -31,7 +31,7 @@ pub async fn customers(
     Ok(Json(customers))
 }
 
-pub async fn customer(
+async fn customer(
     Path(cid): Path<CustomerId>,
     State(pool): State<SqlitePool>,
 ) -> Result<Json<Customer>, Response> {
