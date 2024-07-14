@@ -12,13 +12,12 @@ use std::net::SocketAddr;
 
 use tower_http::trace::TraceLayer;
 
-mod api;
-mod api2;
-mod asset;
-mod htmx;
-mod htmx_secret;
-mod models;
-mod spa;
+use api_server_htmx::api;
+use api_server_htmx::api2;
+use api_server_htmx::asset;
+use api_server_htmx::htmx;
+use api_server_htmx::htmx_secret;
+use api_server_htmx::spa;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

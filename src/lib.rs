@@ -1,4 +1,5 @@
 pub mod api;
+pub mod api2;
 pub mod asset;
 pub mod htmx;
 pub mod htmx_secret;
