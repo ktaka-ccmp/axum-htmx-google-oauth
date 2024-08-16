@@ -2,14 +2,16 @@ use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode, Uri},
-    response::{Html, IntoResponse, Response},
+    http::{StatusCode, Uri},
+    response::{Html, IntoResponse},
 };
-use serde::Serialize;
 use sqlx::SqlitePool;
 use tracing::error;
 
 use crate::models::{Customer, Params};
+
+use crate::middleware::hx_request_middleware;
+use axum::middleware::from_fn;
 
 /// Creates the API router with the given SQLite pool.
 pub fn create_router(pool: SqlitePool) -> ApiRouter {
@@ -21,6 +23,7 @@ pub fn create_router(pool: SqlitePool) -> ApiRouter {
             get_with(content_list_tbody, |op| op.tag("htmx")),
         )
         .with_state(pool)
+        .route_layer(from_fn(hx_request_middleware))
         .fallback(page_not_found)
 }
 
@@ -32,11 +35,7 @@ struct ContentTopTemplate {
 }
 
 /// Handles the content list request.
-async fn content_top(headers: HeaderMap) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(&headers) {
-        return err;
-    }
-
+async fn content_top() -> impl IntoApiResponse {
     let template = ContentTopTemplate {
         title: "Htmx Spa Top".to_string(),
     };
@@ -46,11 +45,7 @@ async fn content_top(headers: HeaderMap) -> impl IntoApiResponse {
 }
 
 /// Fallback route for handling 404 - Page Not Found.
-async fn page_not_found(uri: Uri, headers: HeaderMap) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(&headers) {
-        return err;
-    }
-
+async fn page_not_found(uri: Uri) -> impl IntoApiResponse {
     let title = format!("Page not found: {}", uri);
     println!("Page not found: {:?}", uri);
     let template = ContentTopTemplate { title };
@@ -67,11 +62,7 @@ struct ContentListTemplate {
 }
 
 /// Handles the content list request.
-async fn content_list(headers: HeaderMap) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(&headers) {
-        return err;
-    }
-
+async fn content_list() -> impl IntoApiResponse {
     let template = ContentListTemplate {
         title: "Incremental hx-get demo".to_string(),
         skip_next: 0,
@@ -93,12 +84,7 @@ struct ContentListTbodyTemplate {
 async fn content_list_tbody(
     Query(params): Query<Params>,
     State(pool): State<SqlitePool>,
-    headers: HeaderMap,
 ) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(&headers) {
-        return err;
-    }
-
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(1);
 
@@ -122,23 +108,4 @@ async fn content_list_tbody(
     };
 
     (StatusCode::OK, Html(template.render().unwrap())).into_response()
-}
-
-/// Represents an error response.
-#[derive(Serialize)]
-struct ErrorResponse {
-    detail: String,
-}
-
-/// Checks if the request is an HX request.
-/// Returns an error response if the request is not an HX request.
-pub fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
-    if headers.get("HX-Request").is_none() {
-        let error_response = ErrorResponse {
-            detail: "Only HX request is allowed to this endpoint.".to_string(),
-        };
-        Err((StatusCode::BAD_REQUEST, axum::Json(error_response)).into_response())
-    } else {
-        Ok(())
-    }
 }

@@ -222,10 +222,10 @@ mod tests {
         let response = app.oneshot(request).await.unwrap();
 
         // Assert the response status and body
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
         let body_str = get_body_string(response).await;
-        assert!(body_str.contains("Only HX request is allowed to this endpoint."));
+        assert!(body_str.contains("Page not found: /invalid.path"));
     }
 
     #[tokio::test]

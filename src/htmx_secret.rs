@@ -1,11 +1,12 @@
 use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{Html, IntoResponse},
 };
 
-use crate::htmx::check_hx_request;
+use crate::middleware::hx_request_middleware;
+use axum::middleware::from_fn;
 
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
@@ -17,6 +18,7 @@ pub fn create_router() -> ApiRouter {
             "/content.secret2",
             get_with(content_secret2, |op| op.tag("htmx_secret")),
         )
+        .route_layer(from_fn(hx_request_middleware))
     // .fallback(page_not_found)
 }
 
@@ -27,11 +29,7 @@ struct ContentSecretTemplate {
     img_url: String,
 }
 
-async fn content_secret1(headers: HeaderMap) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(&headers) {
-        return err;
-    }
-
+async fn content_secret1() -> impl IntoApiResponse {
     let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
 
     let template = ContentSecretTemplate {
@@ -41,11 +39,7 @@ async fn content_secret1(headers: HeaderMap) -> impl IntoApiResponse {
     (StatusCode::OK, Html(template.render().unwrap())).into_response()
 }
 
-async fn content_secret2(headers: HeaderMap) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(&headers) {
-        return err;
-    }
-
+async fn content_secret2() -> impl IntoApiResponse {
     let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
 
     let template = ContentSecretTemplate {
