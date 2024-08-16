@@ -1,8 +1,5 @@
 use aide::axum::IntoApiResponse;
-use axum::{
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-};
+use axum::{http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
 /// Represents an error response.
@@ -11,25 +8,17 @@ struct ErrorResponse {
     detail: String,
 }
 
-/// Checks if the request is an HX request.
-/// Returns an error response if the request is not an HX request.
-pub fn check_hx_request(headers: &HeaderMap) -> Result<(), Response> {
-    if headers.get("HX-Request").is_none() {
-        let error_response = ErrorResponse {
-            detail: "Only HX request is allowed to this endpoint.".to_string(),
-        };
-        Err((StatusCode::BAD_REQUEST, axum::Json(error_response)).into_response())
-    } else {
-        Ok(())
-    }
-}
-
-pub async fn hx_request_middleware(
+pub async fn check_hx_request(
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> impl IntoApiResponse {
-    if let Err(err) = check_hx_request(req.headers()) {
-        return err.into_response();
+    // Check if the HX-Request header is present
+    if req.headers().get("HX-Request").is_none() {
+        // Create an error response if the header is missing
+        let error_response = ErrorResponse {
+            detail: "Only HX request is allowed to this endpoint.".to_string(),
+        };
+        return (StatusCode::BAD_REQUEST, axum::Json(error_response)).into_response();
     }
     next.run(req).await.into_response()
 }

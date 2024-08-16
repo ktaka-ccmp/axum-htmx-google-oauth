@@ -5,8 +5,7 @@ use axum::{
     response::{Html, IntoResponse},
 };
 
-use crate::middleware::hx_request_middleware;
-use axum::middleware::from_fn;
+use crate::middleware::check_hx_request;
 
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
@@ -18,7 +17,7 @@ pub fn create_router() -> ApiRouter {
             "/content.secret2",
             get_with(content_secret2, |op| op.tag("htmx_secret")),
         )
-        .route_layer(from_fn(hx_request_middleware))
+        .route_layer(axum::middleware::from_fn(check_hx_request))
     // .fallback(page_not_found)
 }
 

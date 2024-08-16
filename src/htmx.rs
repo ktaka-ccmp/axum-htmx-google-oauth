@@ -10,8 +10,7 @@ use tracing::error;
 
 use crate::models::{Customer, Params};
 
-use crate::middleware::hx_request_middleware;
-use axum::middleware::from_fn;
+use crate::middleware::check_hx_request;
 
 /// Creates the API router with the given SQLite pool.
 pub fn create_router(pool: SqlitePool) -> ApiRouter {
@@ -23,7 +22,7 @@ pub fn create_router(pool: SqlitePool) -> ApiRouter {
             get_with(content_list_tbody, |op| op.tag("htmx")),
         )
         .with_state(pool)
-        .route_layer(from_fn(hx_request_middleware))
+        .route_layer(axum::middleware::from_fn(check_hx_request))
         .fallback(page_not_found)
 }
 
