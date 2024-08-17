@@ -15,6 +15,7 @@ use tower_http::trace::TraceLayer;
 use api_server_htmx::api;
 use api_server_htmx::api2;
 use api_server_htmx::asset;
+use api_server_htmx::auth;
 use api_server_htmx::htmx;
 use api_server_htmx::htmx_secret;
 use api_server_htmx::spa;
@@ -45,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/htmx", htmx::create_router(pool.clone()))
         .nest("/htmx", htmx_secret::create_router())
         .nest("/asset", asset::create_router())
+        .nest("/auth", auth::create_router())
         // .nest_service("/img", image::create_router())
         .layer(TraceLayer::new_for_http())
         .with_state(());
