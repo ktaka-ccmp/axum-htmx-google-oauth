@@ -16,6 +16,10 @@ use std::convert::Infallible;
 use bytes::Bytes;
 use serde::Deserialize;
 
+use crate::idtoken::verify_idtoken;
+use crate::idtoken::TokenVerificationError;
+use crate::models::IdInfo;
+
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
         .api_route("/signin", get(signinpage))
@@ -33,10 +37,30 @@ struct FormData {
 
 async fn login(body: Bytes) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
-    println!("form_data: {:?}", form_data);
+    // println!("form_data: {:?}", form_data);
     let jwt = form_data.credential.unwrap();
     println!("jwt: {:?}", jwt);
-    (StatusCode::OK, "ok".to_string()).into_response()
+
+    if let Ok(_idinfo) = verify_token(jwt).await {
+        (StatusCode::OK, "Authorized".to_string()).into_response();
+    } else {
+        (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response();
+    }
+}
+
+async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
+    let client_id =
+        std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
+
+    let idinfo = match verify_idtoken(jwt, client_id).await {
+        Ok(idinfo) => idinfo,
+        Err(err) => {
+            println!("Error: {:?}", err);
+            return Err(err);
+        }
+    };
+    println!("idinfo: {:?}", idinfo);
+    Ok(idinfo)
 }
 
 #[derive(Template)]
@@ -53,7 +77,7 @@ async fn signinpage() -> Html<String> {
         std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
     let signin_template = SigninTemplate {
         title: "Signin".to_string(),
-        client_id: client_id,
+        client_id,
         nonce: "n-0S6_WzA2Mj".to_string(),
         login_url: "/auth/login".to_string(),
     };
@@ -108,5 +132,5 @@ async fn authorize_and_create_session() -> Option<String> {
     // If invalid, return None
     // None
     let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-    Some(format!("ssid_{}", now.to_string()))
+    Some(format!("ssid_{}", now))
 }

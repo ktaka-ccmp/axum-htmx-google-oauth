@@ -25,3 +25,24 @@ pub struct Params {
     pub skip: Option<i32>,
     pub limit: Option<i32>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct IdInfo {
+    pub iss: String,
+    pub sub: String,
+    pub azp: String,
+    pub aud: String,
+    pub email: String,
+    pub email_verified: bool,
+    pub name: String,
+    pub picture: String,
+    pub given_name: String,
+    pub family_name: String,
+    pub locale: Option<String>,
+    pub iat: i64,
+    pub exp: i64,
+    pub nbf: Option<i64>,
+    pub jti: String,
+    pub nonce: Option<String>,
+    pub hd: Option<String>,
+}

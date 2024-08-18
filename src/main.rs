@@ -47,7 +47,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/htmx", htmx_secret::create_router())
         .nest("/asset", asset::create_router())
         .nest("/auth", auth::create_router())
-        // .nest_service("/img", image::create_router())
         .layer(TraceLayer::new_for_http())
         .with_state(());
 
