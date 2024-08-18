@@ -1,7 +1,7 @@
 use aide::axum::IntoApiResponse;
 use axum::{http::StatusCode, response::IntoResponse};
-use serde::Serialize;
 use axum_extra::extract::cookie::CookieJar;
+use serde::Serialize;
 
 /// Represents an error response.
 #[derive(Serialize)]

@@ -4,8 +4,6 @@ use aide::axum::{
     ApiRouter,
 };
 use askama_axum::Template;
-use axum::body;
-use axum::extract::{Request,RequestParts};
 use axum::http::StatusCode;
 use axum::response::Html;
 use axum::response::IntoResponse;
@@ -15,9 +13,8 @@ use cookie::time::{Duration, OffsetDateTime};
 use cookie::{Cookie, SameSite};
 use std::convert::Infallible;
 
-use hyper::body::to_bytes;
+use bytes::Bytes;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub fn create_router() -> ApiRouter {
     ApiRouter::new()
@@ -29,21 +26,17 @@ pub fn create_router() -> ApiRouter {
     //     get(create_session).layer(axum::middleware::from_fn(delete_session)))
 }
 
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct FormData {
     credential: Option<String>,
 }
 
-async fn login(req: Request<Body>) -> impl IntoApiResponse {
-    let mut parts = RequestParts::new(req);
-    let body = to_bytes(parts.take_body().unwrap()).await.map_err(|e| e.to_string())?;
-    let body_str = std::str::from_utf8(&body).map_err(|e| e.to_string())?;
-    
-    let form_data: HashMap<String, String> = serde_urlencoded::from_str(body_str).map_err(|e| e.to_string())?;
-    let jwt = form_data.get("credential").cloned().ok_or("Credential not found".to_string())?;
-
-    (StatusCode::OK, Json({status: ok})).into_response()
+async fn login(body: Bytes) -> impl IntoApiResponse {
+    let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
+    println!("form_data: {:?}", form_data);
+    let jwt = form_data.credential.unwrap();
+    println!("jwt: {:?}", jwt);
+    (StatusCode::OK, "ok".to_string()).into_response()
 }
 
 #[derive(Template)]
