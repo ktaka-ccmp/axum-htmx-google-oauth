@@ -60,6 +60,16 @@ cargo add aide --features=axum,scalar,axum-extra-query,axum-headers
 cargo add askama_axum
 ```
 
+### Prepare .env
+
+```text
+$ cat .env 
+DATABASE_URL="sqlite:./db/sqlite.db"
+ORIGIN_SERVER="http://localhost:3000"
+
+GOOGLE_OAUTH2_CLIENT_ID="xxxxxx-yyyyyy.apps.googleusercontent.com"
+```
+
 ## run app
 
 ```text
