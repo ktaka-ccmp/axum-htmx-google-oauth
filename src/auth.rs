@@ -42,9 +42,9 @@ async fn login(body: Bytes) -> impl IntoApiResponse {
     println!("jwt: {:?}", jwt);
 
     if let Ok(_idinfo) = verify_token(jwt).await {
-        (StatusCode::OK, "Authorized".to_string()).into_response();
+        (StatusCode::OK, "Authorized".to_string()).into_response()
     } else {
-        (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response();
+        (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
     }
 }
 
