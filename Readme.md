@@ -15,6 +15,16 @@ sqlx migrate run --database-url sqlite:./sqlite.db
 #sqlx migrate run --database-url sqlite:./sqlite.db
 ```
 
+Add user table
+```text
+cd db/
+sqlx migrate add -r user
+vi migrations/20240819135742_user.down.sql
+vi migrations/20240819135742_user.up.sql
+sqlx migrate revert --database-url sqlite:./sqlite.db
+sqlx migrate run --database-url sqlite:./sqlite.db
+```
+
 ### Contents of migration files
 
 xxxx_customer.up.sql

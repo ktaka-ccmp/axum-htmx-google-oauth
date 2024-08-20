@@ -2,9 +2,10 @@
 
 CREATE TABLE IF NOT EXISTS user (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sub INTEGER,
         name TEXT NOT NULL,
         email TEXT NOT NULL,
-        enabled BOOLEAN DEFAULT FALSE,
+        enabled BOOLEAN DEFAULT TRUE,
         admin BOOLEAN DEFAULT FALSE,
         password TEXT,
         picture TEXT
