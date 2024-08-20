@@ -9,12 +9,14 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use sqlx::SqlitePool as Pool;
 use tracing::error;
+
+use sqlx::{Encode, Type, Pool, Sqlite};
+type DB = Sqlite;
 
 use crate::models::{Error, Params, User};
 
-pub fn create_router(pool: Pool) -> ApiRouter {
+pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/users", get_with(read_users, |op| op.tag("user")))
         .api_route(
@@ -25,7 +27,7 @@ pub fn create_router(pool: Pool) -> ApiRouter {
         .with_state(pool)
 }
 
-async fn read_users(Query(params): Query<Params>, State(pool): State<Pool>) -> impl IntoApiResponse {
+async fn read_users(Query(params): Query<Params>, State(pool): State<Pool<DB>>) -> impl IntoApiResponse {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(10);
 
@@ -51,7 +53,7 @@ async fn read_users(Query(params): Query<Params>, State(pool): State<Pool>) -> i
 
 async fn read_user_by_name(
     Path(name): Path<String>,
-    State(pool): State<Pool>,
+    State(pool): State<Pool<DB>>,
 ) -> impl IntoApiResponse {
     let user_result = sqlx::query_as::<_, User>("SELECT * FROM user WHERE name = ?")
         .bind(name)
@@ -80,7 +82,7 @@ async fn read_user_by_name(
 }
 
 async fn create_user(
-    State(pool): State<Pool>,
+    State(pool): State<Pool<DB>>,
     Json(user_data): Json<User>,
 ) -> impl IntoApiResponse {
     match get_user_by_email(&user_data.email, &pool).await {
@@ -111,7 +113,7 @@ async fn create_user(
     }
 }
 
-async fn insert_user(mut user_data: User, pool: &Pool) -> Result<User, sqlx::Error> {
+async fn insert_user(mut user_data: User, pool: &Pool<DB>) -> Result<User, sqlx::Error> {
     if user_data.admin.is_none() {
         user_data.admin = Some(false);
     }
@@ -145,9 +147,14 @@ async fn insert_user(mut user_data: User, pool: &Pool) -> Result<User, sqlx::Err
     }
 }
 
-async fn get_user_by_email(email: &String, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
-    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE email = ?")
-        .bind(email)
+async fn get_user_by_field<'a, T>(field: &str, value: &T, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error>
+where
+    T: Type<DB> + Send + Sync,
+    for<'q> &'q T: Encode<'q, DB> + Type<DB>,
+{
+    let query = format!("SELECT * FROM user WHERE {} = ?", field);
+    let user_in_db = sqlx::query_as::<_, User>(&query)
+        .bind(value)
         .fetch_one(pool)
         .await;
 
@@ -155,56 +162,24 @@ async fn get_user_by_email(email: &String, pool: &Pool) -> Result<Option<User>, 
         Ok(user) => Ok(Some(user)),
         Err(sqlx::Error::RowNotFound) => Ok(None),
         Err(e) => {
-            error!("DB error in get_user_by_email: {:?}", e);
+            error!("DB error in get_user_by_{}: {:?}", field, e);
             Err(e)
         }
     }
 }
 
-async fn get_user_by_name(name: &String, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
-    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE name = ?")
-        .bind(name)
-        .fetch_one(pool)
-        .await;
-
-    match user_in_db {
-        Ok(user) => Ok(Some(user)),
-        Err(sqlx::Error::RowNotFound) => Ok(None),
-        Err(e) => {
-            error!("DB error in get_user_by_name: {:?}", e);
-            Err(e)
-        }
-    }
+async fn get_user_by_email(email: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("email", email, pool).await
 }
 
-async fn get_user_by_sub(sub: &i64, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
-    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE sub = ?")
-        .bind(sub)
-        .fetch_one(pool)
-        .await;
-
-    match user_in_db {
-        Ok(user) => Ok(Some(user)),
-        Err(sqlx::Error::RowNotFound) => Ok(None),
-        Err(e) => {
-            error!("DB error in get_user_by_sub: {:?}", e);
-            Err(e)
-        }
-    }
+async fn get_user_by_name(name: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("name", name, pool).await
 }
 
-async fn get_user_by_id(id: &i64, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
-    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE id = ?")
-        .bind(id)
-        .fetch_one(pool)
-        .await;
+async fn get_user_by_sub(sub: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("sub", sub, pool).await
+}
 
-    match user_in_db {
-        Ok(user) => Ok(Some(user)),
-        Err(sqlx::Error::RowNotFound) => Ok(None),
-        Err(e) => {
-            error!("DB error in get_user_by_id: {:?}", e);
-            Err(e)
-        }
-    }
+async fn get_user_by_id(id: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("id", id, pool).await
 }
