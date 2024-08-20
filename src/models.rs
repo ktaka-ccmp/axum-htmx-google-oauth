@@ -29,7 +29,7 @@ pub struct Params {
 #[derive(Debug, Deserialize)]
 pub struct IdInfo {
     pub iss: String,
-    pub sub: i64,
+    pub sub: String,
     pub azp: String,
     pub aud: String,
     pub email: String,
@@ -50,7 +50,7 @@ pub struct IdInfo {
 #[derive(FromRow, Serialize, JsonSchema, Deserialize, Debug, Clone)]
 pub struct User {
     pub id: Option<i64>,
-    pub sub: i64,
+    pub sub: String,
     pub name: String,
     pub email: String,
     pub enabled: Option<bool>,

@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/htmx", htmx::create_router(pool.clone()))
         .nest("/htmx", htmx_secret::create_router())
         .nest("/asset", asset::create_router())
-        .nest("/auth", auth::create_router())
+        .nest("/auth", auth::create_router(pool.clone()))
         .nest("/crud", user::create_router(pool.clone()))
         .layer(TraceLayer::new_for_http())
         .with_state(());

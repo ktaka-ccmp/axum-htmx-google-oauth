@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS user (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sub INTEGER,
+        sub TEXT,
         name TEXT NOT NULL,
         email TEXT NOT NULL,
         enabled BOOLEAN DEFAULT TRUE,

@@ -1,33 +1,40 @@
-use aide::axum::IntoApiResponse;
 use aide::axum::{
     routing::{get, post},
-    ApiRouter,
+    ApiRouter, IntoApiResponse,
 };
 use askama_axum::Template;
-use axum::http::StatusCode;
-use axum::response::Html;
-use axum::response::IntoResponse;
-use axum::response::Redirect;
-use axum::Error;
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{Html, IntoResponse, Redirect},
+    Json,
+};
 use axum_extra::extract::cookie::CookieJar;
-use cookie::time::{Duration, OffsetDateTime};
-use cookie::{Cookie, SameSite};
+use cookie::{
+    time::{Duration, OffsetDateTime},
+    Cookie, SameSite,
+};
 
 use bytes::Bytes;
 use serde::Deserialize;
 
+use sqlx::{Pool, Sqlite};
+type DB = Sqlite;
+
 use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
-use crate::models::IdInfo;
+use crate::models::{Error, IdInfo};
 
-pub fn create_router() -> ApiRouter {
+pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/signin", get(signinpage))
         .api_route("/login", post(login))
         .api_route("/createsession", get(create_session))
-    // .api_route(
-    //     "/",
-    //     get(create_session).layer(axum::middleware::from_fn(delete_session)))
+        // .api_route(
+        //     "/",
+        //     get(create_session).layer(axum::middleware::from_fn(delete_session)),
+        // )
+        .with_state(pool)
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,13 +42,13 @@ struct FormData {
     credential: Option<String>,
 }
 
-async fn login(body: Bytes) -> impl IntoApiResponse {
+async fn login(State(pool): State<Pool<DB>>, body: Bytes) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
     // println!("form_data: {:?}", form_data);
     let jwt = form_data.credential.unwrap();
     println!("jwt: {:?}", jwt);
 
-    if let Ok(_idinfo) = verify_token(jwt).await {
+    if let Ok(idinfo) = verify_token(jwt).await {
         // match header::HeaderValue
         //     Some(expected_nonce) => {
         //         if idinfo.nonce == expected_nonce.to_str().unwrap() {
@@ -53,36 +60,54 @@ async fn login(body: Bytes) -> impl IntoApiResponse {
         //     None => (StatusCode::BAD_REQUEST, "Invalid nonce".to_string()).into_response(),
         // }
 
-        // let user = get_create_user(&idinfo).await;
-        // if user.is_some() {
-        //     (StatusCode::OK, "OK".to_string()).into_response()
-        // } else {
-        //     (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
-        // }
-        (StatusCode::OK, "OK".to_string()).into_response()
+        println!("idinfo: {:?}", idinfo);
+
+        match get_or_create_user(&idinfo, pool).await {
+            Ok(user) => {
+                let message = serde_json::json!({
+                    "message": "Created user",
+                    "user": user
+                });
+                (StatusCode::OK, Json(message)).into_response()
+            }
+            Err(e) => {
+                let message = Error {
+                    error: format!("Error creating user: {:?}", e),
+                };
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+            }
+        }
     } else {
-        (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
+        let message = Error {
+            error: "Error verifying token".to_string(),
+        };
+        (StatusCode::UNAUTHORIZED, Json(message)).into_response()
     }
 }
 
 use crate::models::User;
+use crate::user::{create_user, get_user_by_sub};
 
-async fn _get_create_user(idinfo: &IdInfo) -> Result<User, Error> {
-    // Check if the user exists
-    // If exists, return the user ID
-    // If not, create the user and return the user ID
-    // None
-    // Some("user_id".to_string())
-    let user_id: i64 = 1;
-    Ok(User {
-        id: Some(user_id),
-        sub: idinfo.sub,
-        email: idinfo.email.clone(),
-        name: idinfo.name.clone(),
-        picture: idinfo.picture.clone(),
-        enabled: Some(true),
-        admin: Some(false),
-    })
+async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
+    match get_user_by_sub(&idinfo.sub, &pool).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => {
+            let user_data = User {
+                id: None,
+                sub: idinfo.sub.clone(),
+                email: idinfo.email.clone(),
+                name: idinfo.name.clone(),
+                picture: idinfo.picture.clone(),
+                enabled: Some(true),
+                admin: Some(false),
+            };
+            match create_user(user_data, &pool).await {
+                Ok(user) => Ok(user),
+                Err(e) => Err(e),
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {

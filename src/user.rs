@@ -100,7 +100,7 @@ async fn hn_get_user_by_name(
 
 async fn hn_delete_user_by_sub(
     State(pool): State<Pool<DB>>,
-    Path(sub): Path<i64>,
+    Path(sub): Path<String>,
 ) -> impl IntoApiResponse {
     hn_delete_user_by_field("sub", &sub, &pool).await
 }
@@ -301,7 +301,7 @@ pub async fn get_user_by_email(
     get_user_by_field("email", email, pool).await
 }
 
-pub async fn get_user_by_sub(sub: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+pub async fn get_user_by_sub(sub: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
     get_user_by_field("sub", sub, pool).await
 }
 
@@ -334,7 +334,7 @@ where
     }
 }
 
-pub async fn delete_user_by_sub(sub: &i64, pool: &Pool<DB>) -> Result<(), sqlx::Error> {
+pub async fn delete_user_by_sub(sub: &String, pool: &Pool<DB>) -> Result<(), sqlx::Error> {
     delete_user_by_field("sub", sub, pool).await
 }
 
