@@ -4,16 +4,14 @@ use aide::axum::{
     ApiRouter,
 };
 use askama_axum::Template;
-use axum::http::{request, StatusCode};
+use axum::http::StatusCode;
 use axum::response::Html;
 use axum::response::IntoResponse;
+use axum::response::Redirect;
 use axum::Error;
-use axum::{async_trait, extract::FromRequestParts, http::request::Parts, response::Redirect};
 use axum_extra::extract::cookie::CookieJar;
 use cookie::time::{Duration, OffsetDateTime};
 use cookie::{Cookie, SameSite};
-use hyper::header;
-use std::convert::Infallible;
 
 use bytes::Bytes;
 use serde::Deserialize;
@@ -69,7 +67,7 @@ async fn login(body: Bytes) -> impl IntoApiResponse {
 
 use crate::models::User;
 
-async fn get_create_user(idinfo: &IdInfo) -> Result<User, Error> {
+async fn _get_create_user(idinfo: &IdInfo) -> Result<User, Error> {
     // Check if the user exists
     // If exists, return the user ID
     // If not, create the user and return the user ID
@@ -78,7 +76,7 @@ async fn get_create_user(idinfo: &IdInfo) -> Result<User, Error> {
     let user_id: i64 = 1;
     Ok(User {
         id: Some(user_id),
-        sub: idinfo.sub.clone(),
+        sub: idinfo.sub,
         email: idinfo.email.clone(),
         name: idinfo.name.clone(),
         picture: idinfo.picture.clone(),
@@ -135,7 +133,7 @@ async fn signinpage() -> Html<String> {
 //     }
 // }
 
-async fn delete_session(
+async fn _delete_session(
     cookiejar: Option<CookieJar>,
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
