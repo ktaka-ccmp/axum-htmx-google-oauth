@@ -1,5 +1,5 @@
 use aide::axum::{
-    routing::{delete_with, get_with, post_with},
+    routing::{delete_with, get_with, post_with, patch_with},
     ApiRouter, IntoApiResponse,
 };
 use axum::{
@@ -27,11 +27,13 @@ pub fn create_router(pool: Pool<DB>) -> ApiRouter {
         .api_route("/user", post_with(hn_create_user, |op| op.tag("user")))
         .api_route(
             "/user/sub/:sub",
-            delete_with(hn_delete_user_by_sub, |op| op.tag("user")),
+            delete_with(hn_delete_user_by_sub, |op| op.tag("user"))
+                .patch_with(hn_update_user_by_sub, |op| op.tag("user")),
         )
         .api_route(
             "/user/id/:id",
-            delete_with(hn_delete_user_by_id, |op| op.tag("user")),
+            delete_with(hn_delete_user_by_id, |op| op.tag("user"))
+                .patch_with(hn_update_user_by_id, |op| op.tag("user")),
         )
         .with_state(pool)
 }
@@ -135,6 +137,125 @@ where
     }
 }
 
+async fn hn_update_user_by_sub(
+    State(pool): State<Pool<DB>>,
+    Path(sub): Path<i64>,
+    Json(user_data): Json<User>,
+) -> impl IntoApiResponse {
+    hn_update_user_by_field("sub", &sub, user_data, &pool).await
+}
+
+async fn hn_update_user_by_id(
+    State(pool): State<Pool<DB>>,
+    Path(id): Path<i64>,
+    Json(user_data): Json<User>,
+) -> impl IntoApiResponse {
+    hn_update_user_by_field("id", &id, user_data, &pool).await
+}
+
+async fn hn_update_user_by_field<'a, T>(
+    field: &str,
+    value: &T,
+    user_data: User,
+    pool: &Pool<DB>,
+) -> impl IntoApiResponse
+where
+    T: Type<DB> + Send + Sync,
+    for<'q> &'q T: Encode<'q, DB> + Type<DB>,
+{
+    match update_user_by_field(field, value, user_data, pool).await {
+        Ok(user) => (StatusCode::OK, Json(user)).into_response(),
+        Err(sqlx::Error::RowNotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(Error {
+                error: "User not found".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            error!("Database error: {:?}", e);
+            let error_response = Error {
+                error: format!("Internal Server Error: {:?}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response()
+        }
+    }
+}
+
+pub async fn update_user_by_sub(
+    sub: &i64,
+    user_data: User,
+    pool: &Pool<DB>,
+) -> Result<User, sqlx::Error> {
+    update_user_by_field("sub", sub, user_data, pool).await
+}
+
+pub async fn update_user_by_id(
+    id: &i64,
+    user_data: User,
+    pool: &Pool<DB>,
+) -> Result<User, sqlx::Error> {
+    update_user_by_field("id", id, user_data, pool).await
+}
+
+async fn update_user_by_field<'a, T>(
+    field: &str,
+    value: &T,
+    mut user_data: User,
+    pool: &Pool<DB>,
+) -> Result<User, sqlx::Error>
+where
+    T: Type<DB> + Send + Sync,
+    for<'q> &'q T: Encode<'q, DB> + Type<DB>,
+{
+
+    let query = format!("SELECT * FROM user WHERE {} = ?", field);
+    let use_in_db = sqlx::query_as::<_, User>(&query)
+        .bind(value)
+        .fetch_one(pool)
+        .await?;
+
+    if user_data.admin.is_none() {
+        user_data.admin = use_in_db.admin;
+    }
+    if user_data.enabled.is_none() {
+        user_data.enabled = use_in_db.enabled;
+    }
+    if user_data.picture.is_none() {
+        user_data.picture = use_in_db.picture;
+    }
+    if user_data.name.is_empty() {
+        user_data.name = use_in_db.name;
+    }
+    if user_data.email.is_empty() {
+        user_data.email = use_in_db.email;
+    }
+
+    let query = format!(
+        "UPDATE user SET name = ?, email = ?, enabled = ?, admin = ?, picture = ? WHERE {} = ?",
+        field
+    );
+    let result = sqlx::query(&query)
+        .bind(user_data.name)
+        .bind(user_data.email)
+        .bind(user_data.enabled)
+        .bind(user_data.admin)
+        .bind(user_data.picture)
+        .bind(value)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(sqlx::Error::RowNotFound);
+    }
+
+    match get_user_by_field(field, value, pool).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(sqlx::Error::RowNotFound),
+        Err(e) => Err(e),
+    }
+}
+
 async fn hn_create_user(
     State(pool): State<Pool<DB>>,
     Json(user_data): Json<User>,
@@ -201,7 +322,10 @@ pub async fn create_user(mut user_data: User, pool: &Pool<DB>) -> Result<User, s
     }
 }
 
-pub async fn get_user_by_email(email: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+pub async fn get_user_by_email(
+    email: &String,
+    pool: &Pool<DB>,
+) -> Result<Option<User>, sqlx::Error> {
     get_user_by_field("email", email, pool).await
 }
 
