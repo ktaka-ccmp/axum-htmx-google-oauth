@@ -8,12 +8,29 @@ aide = { version = "0.13.4", features = ["axum", "scalar", "axum-extra-query", "
 askama = { version = "0.12.1", features = ["with-axum"] }
 askama_axum = "0.4.0"
 axum = { version = "0.7.5", features = ["multipart"] }
+axum-extra = { version = "0.9.3", features = ["cookie"] }
+base64 = "0.22.1"
+bytes = "1.7.1"
+chrono = "0.4.38"
+cookie = "0.18.1"
+dashmap = "6.0.1"
 dotenv = "0.15.0"
 futures = "0.3.30"
+headers = "0.4.0"
+http-body-util = "0.1.2"
+hyper = "1.4.1"
 infer = "0.16.0"
+jsonwebtoken = { version = "9.3.0", features = ["default", "pem"] }
 mime_guess = "2.0.5"
+moka = { version = "0.12.8", features = ["sync", "future"] }
+once_cell = "1.19.0"
+pkcs1 = { version = "0.7.5", features = ["pem"] }
+reqwest = { version = "0.12.5", features = ["blocking", "json"] }
+rsa = "0.9.6"
 schemars = "0.8.21"
 serde = "1.0.203"
+serde_json = "1.0.125"
+serde_urlencoded = "0.7.1"
 sqlx = { version = "0.7.4", features = ["sqlite", "runtime-tokio-rustls"] }
 thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = ["full"] }
