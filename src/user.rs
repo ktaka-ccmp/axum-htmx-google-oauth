@@ -9,24 +9,12 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use sqlx::SqlitePool;
+use sqlx::SqlitePool as Pool;
 use tracing::error;
 
 use crate::models::{Error, Params, User};
 
-// pub fn create_router(pool: SqlitePool) -> ApiRouter {
-//     ApiRouter::new()
-//         .api_route("/users", get_with(get_users, |op| op.tag("user")))
-//         .api_route(
-//             "/user/:name",
-//             get_with(get_user_by_name, |op| op.tag("user")),
-//         )
-//         .api_route("/user", post_with(create_user, |op| op.tag("user")))
-//         // .api_route("/user/:name", delete_with(delete_user, |op| op.tag("user")))
-//         .with_state(pool)
-// }
-
-pub fn create_router(pool: SqlitePool) -> ApiRouter {
+pub fn create_router(pool: Pool) -> ApiRouter {
     ApiRouter::new()
         .api_route("/users", get_with(get_users, |op| op.tag("user")))
         .api_route(
@@ -37,10 +25,7 @@ pub fn create_router(pool: SqlitePool) -> ApiRouter {
         .with_state(pool)
 }
 
-async fn get_users(
-    Query(params): Query<Params>,
-    State(pool): State<SqlitePool>,
-) -> impl IntoApiResponse {
+async fn get_users(Query(params): Query<Params>, State(pool): State<Pool>) -> impl IntoApiResponse {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(10);
 
@@ -66,7 +51,7 @@ async fn get_users(
 
 async fn get_user_by_name(
     Path(name): Path<String>,
-    State(pool): State<SqlitePool>,
+    State(pool): State<Pool>,
 ) -> impl IntoApiResponse {
     let user_result = sqlx::query_as::<_, User>("SELECT * FROM user WHERE name = ?")
         .bind(name)
@@ -95,8 +80,8 @@ async fn get_user_by_name(
 }
 
 async fn create_user(
+    State(pool): State<Pool>,
     Json(user_data): Json<User>,
-    State(pool): State<SqlitePool>,
 ) -> impl IntoApiResponse {
     match get_user_by_email(&user_data.email, &pool).await {
         Ok(existing_user) => {
@@ -120,7 +105,7 @@ async fn create_user(
     }
 }
 
-async fn insert_user(user_data: &User, pool: &SqlitePool) -> Result<User, sqlx::Error> {
+async fn insert_user(user_data: &User, pool: &Pool) -> Result<User, sqlx::Error> {
     let result = sqlx::query(
         "INSERT INTO user (sub, name, email, enabled, admin, picture) VALUES (?, ?, ?, ?, ?, ?)",
     )
@@ -137,17 +122,14 @@ async fn insert_user(user_data: &User, pool: &SqlitePool) -> Result<User, sqlx::
     get_user_by_id(&id, pool).await
 }
 
-async fn get_user_by_email(
-    email: &String,
-    pool: &sqlx::Pool<sqlx::Sqlite>,
-) -> Result<User, sqlx::Error> {
+async fn get_user_by_email(email: &String, pool: &Pool) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>("SELECT * FROM user WHERE email = ?")
         .bind(email)
         .fetch_one(pool)
         .await
 }
 
-async fn get_user_by_id(id: &i64, pool: &sqlx::Pool<sqlx::Sqlite>) -> Result<User, sqlx::Error> {
+async fn get_user_by_id(id: &i64, pool: &Pool) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>("SELECT * FROM user WHERE id = ?")
         .bind(id)
         .fetch_one(pool)

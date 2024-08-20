@@ -61,7 +61,7 @@ async fn login(body: Bytes) -> impl IntoApiResponse {
         // } else {
         //     (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
         // }
-        (StatusCode::OK, "OK".to_string()).into_response() 
+        (StatusCode::OK, "OK".to_string()).into_response()
     } else {
         (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
     }

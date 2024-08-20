@@ -28,7 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     dotenv().ok();
-    let db_connection_str = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let db_connection_str = std::env::var("DATABASE_URL")
+        .expect("Check your .env file.\nDATABASE_URL environment variable must be set.");
     let pool = Pool::connect(&db_connection_str).await?;
 
     let docs_router = ApiRouter::new()
