@@ -19,6 +19,7 @@ use api_server_htmx::auth;
 use api_server_htmx::htmx;
 use api_server_htmx::htmx_secret;
 use api_server_htmx::spa;
+use api_server_htmx::user;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .api_route("/docs/", get(|| async { Redirect::permanent("/docs") }))
         .api_route("/spa/", get(|| async { Redirect::permanent("/spa") }))
         .api_route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))
+        .api_route("/auth/", get(|| async { Redirect::permanent("/auth") }))
         .nest("/docs", docs_router)
         .nest("/api", api::create_router(pool.clone()))
         .nest("/api2", api2::create_router(pool.clone()))
@@ -47,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/htmx", htmx_secret::create_router())
         .nest("/asset", asset::create_router())
         .nest("/auth", auth::create_router())
+        .nest("/crud", user::create_router(pool.clone()))
         .layer(TraceLayer::new_for_http())
         .with_state(());
 

@@ -79,7 +79,7 @@ struct CachedJwks {
 }
 
 const CACHE_MODE: &str = "dashmap";
-const CACHE_EXPIRATION: Duration = Duration::from_secs(3600);
+const CACHE_EXPIRATION: Duration = Duration::from_secs(60);
 
 async fn fetch_jwks(jwks_url: &str) -> Result<Jwks, TokenVerificationError> {
     match CACHE_MODE {

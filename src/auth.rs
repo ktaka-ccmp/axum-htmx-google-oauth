@@ -4,13 +4,15 @@ use aide::axum::{
     ApiRouter,
 };
 use askama_axum::Template;
-use axum::http::StatusCode;
+use axum::http::{request, StatusCode};
 use axum::response::Html;
 use axum::response::IntoResponse;
+use axum::Error;
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts, response::Redirect};
 use axum_extra::extract::cookie::CookieJar;
 use cookie::time::{Duration, OffsetDateTime};
 use cookie::{Cookie, SameSite};
+use hyper::header;
 use std::convert::Infallible;
 
 use bytes::Bytes;
@@ -42,10 +44,48 @@ async fn login(body: Bytes) -> impl IntoApiResponse {
     println!("jwt: {:?}", jwt);
 
     if let Ok(_idinfo) = verify_token(jwt).await {
-        (StatusCode::OK, "Authorized".to_string()).into_response()
+        // match header::HeaderValue
+        //     Some(expected_nonce) => {
+        //         if idinfo.nonce == expected_nonce.to_str().unwrap() {
+        //             (StatusCode::OK, "OK".to_string()).into_response()
+        //         } else {
+        //             (StatusCode::BAD_REQUEST, "Invalid nonce".to_string()).into_response()
+        //         }
+        //     }
+        //     None => (StatusCode::BAD_REQUEST, "Invalid nonce".to_string()).into_response(),
+        // }
+
+        // let user = get_create_user(&idinfo).await;
+        // if user.is_some() {
+        //     (StatusCode::OK, "OK".to_string()).into_response()
+        // } else {
+        //     (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
+        // }
+        (StatusCode::OK, "OK".to_string()).into_response() 
     } else {
         (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()).into_response()
     }
+}
+
+use crate::models::User;
+
+async fn get_create_user(idinfo: &IdInfo) -> Result<User, Error> {
+    // Check if the user exists
+    // If exists, return the user ID
+    // If not, create the user and return the user ID
+    // None
+    // Some("user_id".to_string())
+    let user_id: i64 = 1;
+    Ok(User {
+        id: user_id,
+        email: idinfo.email.clone(),
+        name: idinfo.name.clone(),
+        picture: idinfo.picture.clone(),
+        sub: Some(idinfo.sub.clone()),
+        enabled: true,
+        admin: false,
+        password: None,
+    })
 }
 
 async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
@@ -85,16 +125,16 @@ async fn signinpage() -> Html<String> {
     Html(template.render().unwrap())
 }
 
-pub struct User;
+// pub struct User;
 
-#[async_trait]
-impl<S> FromRequestParts<S> for User {
-    type Rejection = Infallible;
+// #[async_trait]
+// impl<S> FromRequestParts<S> for User {
+//     type Rejection = Infallible;
 
-    async fn from_request_parts(_parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        Ok(User)
-    }
-}
+//     async fn from_request_parts(_parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+//         Ok(User)
+//     }
+// }
 
 async fn delete_session(
     cookiejar: Option<CookieJar>,
