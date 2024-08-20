@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cargo install sqlx-cli
+
 source .env
 
 ## Data DB

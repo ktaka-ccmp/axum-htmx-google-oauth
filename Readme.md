@@ -25,6 +25,8 @@ sqlx migrate revert --database-url sqlite:./sqlite.db
 sqlx migrate run --database-url sqlite:./sqlite.db
 ```
 
+`./db/create_data.sh`
+
 ### Contents of migration files
 
 xxxx_customer.up.sql

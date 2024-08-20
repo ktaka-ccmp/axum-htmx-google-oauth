@@ -16,16 +16,16 @@ use crate::models::{Error, Params, User};
 
 pub fn create_router(pool: Pool) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/users", get_with(get_users, |op| op.tag("user")))
+        .api_route("/users", get_with(read_users, |op| op.tag("user")))
         .api_route(
             "/user/:name",
-            get_with(get_user_by_name, |op| op.tag("user")),
+            get_with(read_user_by_name, |op| op.tag("user")),
         )
         .api_route("/user", post_with(create_user, |op| op.tag("user")))
         .with_state(pool)
 }
 
-async fn get_users(Query(params): Query<Params>, State(pool): State<Pool>) -> impl IntoApiResponse {
+async fn read_users(Query(params): Query<Params>, State(pool): State<Pool>) -> impl IntoApiResponse {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(10);
 
@@ -49,7 +49,7 @@ async fn get_users(Query(params): Query<Params>, State(pool): State<Pool>) -> im
     }
 }
 
-async fn get_user_by_name(
+async fn read_user_by_name(
     Path(name): Path<String>,
     State(pool): State<Pool>,
 ) -> impl IntoApiResponse {
@@ -84,16 +84,16 @@ async fn create_user(
     Json(user_data): Json<User>,
 ) -> impl IntoApiResponse {
     match get_user_by_email(&user_data.email, &pool).await {
-        Ok(existing_user) => {
+        Ok(Some(user_data)) => {
             let error_response = json!({
                 "error": format!(
                     "User already exists with email: {:?}, sub: {:?}",
-                    existing_user.email, existing_user.sub
+                    user_data.email, user_data.sub
                 )
             });
             (StatusCode::BAD_REQUEST, Json(error_response))
         }
-        Err(_) => match insert_user(&user_data, &pool).await {
+        Ok(None) => match insert_user(user_data, &pool).await {
             Ok(new_user) => (StatusCode::CREATED, Json(json!(new_user))),
             Err(e) => {
                 let error_response = json!({
@@ -102,36 +102,109 @@ async fn create_user(
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
             }
         },
+        Err(e) => {
+            let error_response = json!({
+                "error": format!("Failed to create user: {}", e)
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+        }
     }
 }
 
-async fn insert_user(user_data: &User, pool: &Pool) -> Result<User, sqlx::Error> {
+async fn insert_user(mut user_data: User, pool: &Pool) -> Result<User, sqlx::Error> {
+    if user_data.admin.is_none() {
+        user_data.admin = Some(false);
+    }
+    if user_data.enabled.is_none() {
+        user_data.enabled = Some(true);
+    }
+    if user_data.picture.is_none() {
+        user_data.picture = None;
+    }
+
+    println!("user_data: {:?}", user_data);
+
     let result = sqlx::query(
         "INSERT INTO user (sub, name, email, enabled, admin, picture) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(&user_data.sub)
-    .bind(&user_data.name)
-    .bind(&user_data.email)
+    .bind(user_data.sub)
+    .bind(user_data.name)
+    .bind(user_data.email)
     .bind(user_data.enabled)
     .bind(user_data.admin)
-    .bind(&user_data.picture)
+    .bind(user_data.picture)
     .execute(pool)
     .await?;
 
     let id = result.last_insert_rowid();
-    get_user_by_id(&id, pool).await
+
+    match get_user_by_id(&id, pool).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(sqlx::Error::RowNotFound),
+        Err(e) => Err(e),
+    }
 }
 
-async fn get_user_by_email(email: &String, pool: &Pool) -> Result<User, sqlx::Error> {
-    sqlx::query_as::<_, User>("SELECT * FROM user WHERE email = ?")
+async fn get_user_by_email(email: &String, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
+    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE email = ?")
         .bind(email)
         .fetch_one(pool)
-        .await
+        .await;
+
+    match user_in_db {
+        Ok(user) => Ok(Some(user)),
+        Err(sqlx::Error::RowNotFound) => Ok(None),
+        Err(e) => {
+            error!("DB error in get_user_by_email: {:?}", e);
+            Err(e)
+        }
+    }
 }
 
-async fn get_user_by_id(id: &i64, pool: &Pool) -> Result<User, sqlx::Error> {
-    sqlx::query_as::<_, User>("SELECT * FROM user WHERE id = ?")
+async fn get_user_by_name(name: &String, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
+    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE name = ?")
+        .bind(name)
+        .fetch_one(pool)
+        .await;
+
+    match user_in_db {
+        Ok(user) => Ok(Some(user)),
+        Err(sqlx::Error::RowNotFound) => Ok(None),
+        Err(e) => {
+            error!("DB error in get_user_by_name: {:?}", e);
+            Err(e)
+        }
+    }
+}
+
+async fn get_user_by_sub(sub: &i64, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
+    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE sub = ?")
+        .bind(sub)
+        .fetch_one(pool)
+        .await;
+
+    match user_in_db {
+        Ok(user) => Ok(Some(user)),
+        Err(sqlx::Error::RowNotFound) => Ok(None),
+        Err(e) => {
+            error!("DB error in get_user_by_sub: {:?}", e);
+            Err(e)
+        }
+    }
+}
+
+async fn get_user_by_id(id: &i64, pool: &Pool) -> Result<Option<User>, sqlx::Error> {
+    let user_in_db = sqlx::query_as::<_, User>("SELECT * FROM user WHERE id = ?")
         .bind(id)
         .fetch_one(pool)
-        .await
+        .await;
+
+    match user_in_db {
+        Ok(user) => Ok(Some(user)),
+        Err(sqlx::Error::RowNotFound) => Ok(None),
+        Err(e) => {
+            error!("DB error in get_user_by_id: {:?}", e);
+            Err(e)
+        }
+    }
 }

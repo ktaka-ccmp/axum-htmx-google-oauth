@@ -47,14 +47,13 @@ pub struct IdInfo {
     pub hd: Option<String>,
 }
 
-#[derive(FromRow, Serialize, JsonSchema, Deserialize, Debug)]
+#[derive(FromRow, Serialize, JsonSchema, Deserialize, Debug, Clone)]
 pub struct User {
-    pub id: i64,
-    pub sub: Option<i64>,
+    pub id: Option<i64>,
+    pub sub: i64,
     pub name: String,
     pub email: String,
-    pub enabled: bool,
-    pub admin: bool,
-    pub password: Option<String>,
+    pub enabled: Option<bool>,
+    pub admin: Option<bool>,
     pub picture: Option<String>,
 }

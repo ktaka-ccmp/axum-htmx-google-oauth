@@ -77,14 +77,13 @@ async fn get_create_user(idinfo: &IdInfo) -> Result<User, Error> {
     // Some("user_id".to_string())
     let user_id: i64 = 1;
     Ok(User {
-        id: user_id,
+        id: Some(user_id),
+        sub: idinfo.sub.clone(),
         email: idinfo.email.clone(),
         name: idinfo.name.clone(),
         picture: idinfo.picture.clone(),
-        sub: Some(idinfo.sub.clone()),
-        enabled: true,
-        admin: false,
-        password: None,
+        enabled: Some(true),
+        admin: Some(false),
     })
 }
 
