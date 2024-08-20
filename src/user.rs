@@ -1,5 +1,5 @@
 use aide::axum::{
-    routing::{get_with, post_with},
+    routing::{delete_with, get_with, post_with},
     ApiRouter, IntoApiResponse,
 };
 use axum::{
@@ -11,23 +11,35 @@ use axum::{
 use serde_json::json;
 use tracing::error;
 
-use sqlx::{Encode, Type, Pool, Sqlite};
+use sqlx::{Encode, MySql, Pool, Postgres, Sqlite, Type};
 type DB = Sqlite;
+// type DB = Postgres;
 
 use crate::models::{Error, Params, User};
 
 pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/users", get_with(read_users, |op| op.tag("user")))
+        .api_route("/users", get_with(hn_get_users, |op| op.tag("user")))
         .api_route(
             "/user/:name",
-            get_with(read_user_by_name, |op| op.tag("user")),
+            get_with(hn_get_user_by_name, |op| op.tag("user")),
         )
-        .api_route("/user", post_with(create_user, |op| op.tag("user")))
+        .api_route("/user", post_with(hn_create_user, |op| op.tag("user")))
+        .api_route(
+            "/user/sub/:sub",
+            delete_with(hn_delete_user_by_sub, |op| op.tag("user")),
+        )
+        .api_route(
+            "/user/id/:id",
+            delete_with(hn_delete_user_by_id, |op| op.tag("user")),
+        )
         .with_state(pool)
 }
 
-async fn read_users(Query(params): Query<Params>, State(pool): State<Pool<DB>>) -> impl IntoApiResponse {
+async fn hn_get_users(
+    Query(params): Query<Params>,
+    State(pool): State<Pool<DB>>,
+) -> impl IntoApiResponse {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(10);
 
@@ -51,13 +63,13 @@ async fn read_users(Query(params): Query<Params>, State(pool): State<Pool<DB>>) 
     }
 }
 
-async fn read_user_by_name(
+async fn hn_get_user_by_name(
     Path(name): Path<String>,
     State(pool): State<Pool<DB>>,
 ) -> impl IntoApiResponse {
     let user_result = sqlx::query_as::<_, User>("SELECT * FROM user WHERE name = ?")
         .bind(name)
-        .fetch_one(&pool)
+        .fetch_all(&pool)
         .await;
 
     match user_result {
@@ -81,7 +93,49 @@ async fn read_user_by_name(
     }
 }
 
-async fn create_user(
+async fn hn_delete_user_by_sub(
+    State(pool): State<Pool<DB>>,
+    Path(sub): Path<i64>,
+) -> impl IntoApiResponse {
+    hn_delete_user_by_field("sub", &sub, &pool).await
+}
+
+async fn hn_delete_user_by_id(
+    State(pool): State<Pool<DB>>,
+    Path(id): Path<i64>,
+) -> impl IntoApiResponse {
+    hn_delete_user_by_field("id", &id, &pool).await
+}
+
+async fn hn_delete_user_by_field<'a, T>(
+    field: &str,
+    value: &T,
+    pool: &Pool<DB>,
+) -> impl IntoApiResponse
+where
+    T: Type<DB> + Send + Sync,
+    for<'q> &'q T: Encode<'q, DB> + Type<DB>,
+{
+    match delete_user_by_field(field, &value, &pool).await {
+        Ok(_) => (StatusCode::OK, Json(json!({ "message": "User deleted" }))).into_response(),
+        Err(sqlx::Error::RowNotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(Error {
+                error: "User not found".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            error!("Database error: {:?}", e);
+            let error_response = Error {
+                error: format!("Internal Server Error: {:?}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response()
+        }
+    }
+}
+
+async fn hn_create_user(
     State(pool): State<Pool<DB>>,
     Json(user_data): Json<User>,
 ) -> impl IntoApiResponse {
@@ -95,7 +149,7 @@ async fn create_user(
             });
             (StatusCode::BAD_REQUEST, Json(error_response))
         }
-        Ok(None) => match insert_user(user_data, &pool).await {
+        Ok(None) => match create_user(user_data, &pool).await {
             Ok(new_user) => (StatusCode::CREATED, Json(json!(new_user))),
             Err(e) => {
                 let error_response = json!({
@@ -113,7 +167,7 @@ async fn create_user(
     }
 }
 
-async fn insert_user(mut user_data: User, pool: &Pool<DB>) -> Result<User, sqlx::Error> {
+pub async fn create_user(mut user_data: User, pool: &Pool<DB>) -> Result<User, sqlx::Error> {
     if user_data.admin.is_none() {
         user_data.admin = Some(false);
     }
@@ -147,7 +201,23 @@ async fn insert_user(mut user_data: User, pool: &Pool<DB>) -> Result<User, sqlx:
     }
 }
 
-async fn get_user_by_field<'a, T>(field: &str, value: &T, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error>
+pub async fn get_user_by_email(email: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("email", email, pool).await
+}
+
+pub async fn get_user_by_sub(sub: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("sub", sub, pool).await
+}
+
+pub async fn get_user_by_id(id: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
+    get_user_by_field("id", id, pool).await
+}
+
+async fn get_user_by_field<'a, T>(
+    field: &str,
+    value: &T,
+    pool: &Pool<DB>,
+) -> Result<Option<User>, sqlx::Error>
 where
     T: Type<DB> + Send + Sync,
     for<'q> &'q T: Encode<'q, DB> + Type<DB>,
@@ -168,18 +238,29 @@ where
     }
 }
 
-async fn get_user_by_email(email: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
-    get_user_by_field("email", email, pool).await
+pub async fn delete_user_by_sub(sub: &i64, pool: &Pool<DB>) -> Result<(), sqlx::Error> {
+    delete_user_by_field("sub", sub, pool).await
 }
 
-async fn get_user_by_name(name: &String, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
-    get_user_by_field("name", name, pool).await
+pub async fn delete_user_by_id(id: &i64, pool: &Pool<DB>) -> Result<(), sqlx::Error> {
+    delete_user_by_field("id", id, pool).await
 }
 
-async fn get_user_by_sub(sub: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
-    get_user_by_field("sub", sub, pool).await
-}
+async fn delete_user_by_field<'a, T>(
+    field: &str,
+    value: &T,
+    pool: &Pool<DB>,
+) -> Result<(), sqlx::Error>
+where
+    T: Type<DB> + Send + Sync,
+    for<'q> &'q T: Encode<'q, DB> + Type<DB>,
+{
+    let query = format!("DELETE FROM user WHERE {} = ?", field);
+    let result = sqlx::query(&query).bind(value).execute(pool).await?;
 
-async fn get_user_by_id(id: &i64, pool: &Pool<DB>) -> Result<Option<User>, sqlx::Error> {
-    get_user_by_field("id", id, pool).await
+    if result.rows_affected() == 0 {
+        return Err(sqlx::Error::RowNotFound);
+    }
+
+    Ok(())
 }
