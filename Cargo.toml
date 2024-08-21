@@ -43,3 +43,4 @@ http-body-util = "0.1.2"
 tower = "0.4"
 env_logger = "0.9"
 hyper = "1.4.1"
+axum = { version = "0.7.5", features = ["json"] }
