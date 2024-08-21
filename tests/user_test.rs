@@ -4,9 +4,9 @@ mod tests {
     use api_server_htmx::{models::User, user::create_router};
     use axum::{
         body::Body,
-        http::{Method, Request, StatusCode}
+        http::{Method, Request, StatusCode},
     };
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
     use sqlx::{Pool, Sqlite};
     use tokio;
     use tower::ServiceExt;
@@ -186,7 +186,6 @@ mod tests {
 
         // println!("response_body: {:?}", response_body["name"]);
         // assert_eq!(status, StatusCode::NOT_FOUND);
-    
     }
 
     #[tokio::test]
