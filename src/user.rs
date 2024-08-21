@@ -77,24 +77,26 @@ async fn hn_get_user_by_name(
         .fetch_all(&pool)
         .await;
 
+    // println!("user_result: {:?}", user_result);
+
     match user_result {
-        Ok(user) => (StatusCode::OK, Json(user)).into_response(),
-        Err(e) => match e {
-            sqlx::Error::RowNotFound => (
+        Ok(users) => match users.len() {
+            0 => (
                 StatusCode::NOT_FOUND,
                 Json(Error {
                     error: "User not found".to_string(),
                 }),
             )
                 .into_response(),
-            _ => {
-                error!("Database error: {:?}", e);
-                let error_response = Error {
-                    error: format!("Internal Server Error: {:?}", e),
-                };
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response()
-            }
+            _ => (StatusCode::OK, Json(users.clone())).into_response(),
         },
+        Err(e) => {
+            error!("Database error: {:?}", e);
+            let error_response = Error {
+                error: format!("Internal Server Error: {:?}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response()
+        }
     }
 }
 
@@ -144,7 +146,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, JsonSchema, Deserialize, Debug, Clone)]
-
 struct UserPatch {
     id: i64,
     name: Option<String>,
