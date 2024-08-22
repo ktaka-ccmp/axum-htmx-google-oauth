@@ -24,6 +24,8 @@ type DB = Sqlite;
 use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
 use crate::models::{Error, IdInfo};
+use crate::models::User;
+use crate::user::{create_user, get_user_by_sub};
 
 pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
@@ -84,9 +86,6 @@ async fn login(State(pool): State<Pool<DB>>, body: Bytes) -> impl IntoApiRespons
         (StatusCode::UNAUTHORIZED, Json(message)).into_response()
     }
 }
-
-use crate::models::User;
-use crate::user::{create_user, get_user_by_sub};
 
 async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
     match get_user_by_sub(&idinfo.sub, &pool).await {
