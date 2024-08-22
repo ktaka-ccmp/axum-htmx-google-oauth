@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use aide::axum::{
     routing::{get, post},
     ApiRouter, IntoApiResponse,
@@ -16,27 +18,29 @@ use cookie::{
 };
 
 use bytes::Bytes;
+use hyper::{header, Response};
 use serde::Deserialize;
+use sqlx::Pool;
 
-use sqlx::{Pool, Sqlite};
-type DB = Sqlite;
-
+use crate::cachestore::Session;
 use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
-use crate::models::{Error, IdInfo};
 use crate::models::User;
+use crate::models::{Error, IdInfo};
 use crate::user::{create_user, get_user_by_sub};
+use crate::{AppState, DB};
 
-pub fn create_router(pool: Pool<DB>) -> ApiRouter {
+pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/signin", get(signinpage))
         .api_route("/login", post(login))
+        // .api_route("/logout", get(logout))
         .api_route("/createsession", get(create_session))
         // .api_route(
         //     "/",
         //     get(create_session).layer(axum::middleware::from_fn(delete_session)),
         // )
-        .with_state(pool)
+        .with_state(state)
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +48,7 @@ struct FormData {
     credential: Option<String>,
 }
 
-async fn login(State(pool): State<Pool<DB>>, body: Bytes) -> impl IntoApiResponse {
+async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
     // println!("form_data: {:?}", form_data);
     let jwt = form_data.credential.unwrap();
@@ -64,13 +68,27 @@ async fn login(State(pool): State<Pool<DB>>, body: Bytes) -> impl IntoApiRespons
 
         println!("idinfo: {:?}", idinfo);
 
-        match get_or_create_user(&idinfo, pool).await {
+        match get_or_create_user(&idinfo, state.pool.clone()).await {
             Ok(user) => {
                 let message = serde_json::json!({
                     "message": "Created user",
                     "user": user
                 });
-                (StatusCode::OK, Json(message)).into_response()
+
+                let response = Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Json(message).into_response().into_body())
+                    .unwrap();
+
+                let session = state
+                    .cache
+                    .create_session(user.id.unwrap(), &user.email)
+                    .await
+                    .unwrap();
+
+                let jar = new_cookie(&session);
+                (jar, response).into_response()
             }
             Err(e) => {
                 let message = Error {
@@ -85,6 +103,54 @@ async fn login(State(pool): State<Pool<DB>>, body: Bytes) -> impl IntoApiRespons
         };
         (StatusCode::UNAUTHORIZED, Json(message)).into_response()
     }
+}
+
+use sha2::{Digest, Sha256};
+
+fn new_cookie(session: &Session) -> CookieJar {
+    let max_age = Duration::seconds(3600); // Replace with your actual session_max_age value
+    let expires = OffsetDateTime::now_utc() + max_age;
+
+    let mut jar = CookieJar::new();
+
+    let cookie = Cookie::build(("session_id", session.session_id.clone()))
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .max_age(max_age)
+        .expires(expires)
+        .build();
+
+    jar = jar.add(cookie);
+
+    let cookie = Cookie::build(("csrf_token", session.csrf_token.clone()))
+        .path("/")
+        .secure(true)
+        .http_only(false)
+        .same_site(SameSite::Strict)
+        .max_age(max_age)
+        .expires(expires)
+        .build();
+
+    jar = jar.add(cookie);
+
+    let cookie = Cookie::build(("user_token", hash_email(&session.email)))
+        .path("/")
+        .secure(true)
+        .http_only(false)
+        .same_site(SameSite::Strict)
+        .max_age(max_age)
+        .expires(expires)
+        .build();
+
+    jar.add(cookie)
+}
+
+fn hash_email(email: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(email.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
