@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
-use aide::axum::{
-    routing::{get, post}, ApiRouter, AxumOperationHandler, IntoApiResponse
+use aide::{
+    axum::{
+        routing::{get, get_with, post, post_with},
+        ApiRouter, AxumOperationHandler, IntoApiResponse,
+    },
+    NoApi,
 };
 use askama_axum::Template;
 use axum::{
@@ -32,11 +36,14 @@ use crate::{AppState, DB};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/signin", get(signinpage))
-        .api_route("/login", post(login))
-        .api_route("/logout", get(logout))
-        .api_route("/me", get(me))
-        .api_route("/createsession", get(create_session))
+        .api_route("/signin", get_with(signinpage, |op| op.tag("auth")))
+        .api_route("/login", post_with(login, |op| op.tag("auth")))
+        .api_route("/logout", get_with(logout, |op| op.tag("auth")))
+        .api_route("/me", get_with(me, |op| op.tag("auth")))
+        .api_route(
+            "/createsession",
+            get_with(create_session, |op| op.tag("auth")),
+        )
         // .api_route(
         //     "/",
         //     get(create_session).layer(axum::middleware::from_fn(delete_session)),
@@ -49,13 +56,15 @@ struct FormData {
     credential: Option<String>,
 }
 
-async fn me(jar: CookieJar) -> impl IntoApiResponse {
+async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
     if let Some(session_id) = jar.get("session_id") {
         println!("session_id: {}", session_id.value());
         let messages = format!("session_id: {}", session_id.value());
         (StatusCode::OK, messages).into_response()
+        // Ok(())
     } else {
         (StatusCode::UNAUTHORIZED, "session_id not found in Cookie").into_response()
+        // Err(StatusCode::UNAUTHORIZED)
     }
 }
 
@@ -67,40 +76,53 @@ async fn me(jar: CookieJar) -> impl IntoApiResponse {
 
 async fn logout(
     State(state): State<Arc<AppState>>,
+    NoApi(jar): NoApi<Option<CookieJar>>,
 ) -> impl IntoApiResponse {
+    let mut session_deleted = false;
 
-    // let jar: CookieJar = 
-    // let mut session_deleted = false;
+    if let Some(mut jar) = jar {
+        if let Some(session_id) = jar.get("session_id") {
+            if let Err(e) = state.cache.delete_session(session_id.value()).await {
+                eprintln!("Failed to delete session: {}", e);
+            } else {
+                session_deleted = true;
+            }
+        }
 
-    // if let Some(jar) = jar {
-    //     if let Some(session_id) = jar.get("session_id") {
-    //         if let Err(e) = state.cache.delete_session(session_id.value()).await {
-    //             eprintln!("Failed to delete session: {}", e);
-    //         } else {
-    //             session_deleted = true;
-    //         }
-    //     }
+        println!("jar: {:?}", jar);
+        // let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
+        // // let mut new_jar = jar;
+        // for name in cookies_to_remove.iter() {
+        //     &jar.remove(Cookie::new(*name, ""));
+        //     println!("new_jar.{}: {:?}", name, jar.get(name));
+        // }
+        
+        let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
+        for name in cookies_to_remove.iter() {
+            jar = jar.remove(Cookie::new(*name, ""));
+        }
+                println!("new_jar: {:?}", jar);
 
-    //     // Remove cookies
-    //     let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
-    //     let mut new_jar = jar.clone();
-    //     for name in cookies_to_remove.iter() {
-    //         new_jar = new_jar.remove(Cookie::new(*name, ""));
-    //     }
+        let message = if session_deleted {
+            serde_json::json!({
+                "message": "Session deleted successfully",
+            })
+        } else {
+            serde_json::json!({
+                "message": "No active session found",
+            })
+        };
 
-    //     let message = if session_deleted {
-    //         "Session deleted successfully"
-    //     } else {
-    //         "No active session found"
-    //     };
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Json(message).into_response().into_body())
+            .unwrap();
 
-    //     // (jar, StatusCode::OK, message)
-    //     (StatusCode::OK, message).into_response()
-    //     // (StatusCode::OK, jar, message).into_response()
-    // } else {
-    //     (StatusCode::OK, "No active session found").into_response()
-    // }
-    (StatusCode::OK, "No yet implemented").into_response()
+        (jar, response).into_response()
+    } else {
+        (StatusCode::OK, "No active session found").into_response()
+    }
 }
 
 async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiResponse {
