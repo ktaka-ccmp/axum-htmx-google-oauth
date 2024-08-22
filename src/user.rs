@@ -9,11 +9,11 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use tracing::error;
 use sqlx::{Encode, Pool, Type};
+use tracing::error;
 
-use crate::DB;
 use crate::models::{Error, Params, User};
+use crate::DB;
 
 pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
