@@ -9,3 +9,6 @@ pub mod middleware;
 pub mod models; // Ensure this is also included if models are in a separate file
 pub mod spa;
 pub mod user;
+
+use sqlx::Sqlite;
+pub type DB = Sqlite;

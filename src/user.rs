@@ -10,12 +10,9 @@ use axum::{
 };
 use serde_json::json;
 use tracing::error;
+use sqlx::{Encode, Pool, Type};
 
-use sqlx::{Encode, Pool, Sqlite, Type};
-type DB = Sqlite;
-// use sqlx::Postgres;
-// type DB = Postgres;
-
+use crate::DB;
 use crate::models::{Error, Params, User};
 
 pub fn create_router(pool: Pool<DB>) -> ApiRouter {
