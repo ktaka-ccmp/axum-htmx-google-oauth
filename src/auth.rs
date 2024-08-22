@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use aide::axum::{
-    routing::{get, post},
-    ApiRouter, IntoApiResponse,
+    routing::{get, post}, ApiRouter, AxumOperationHandler, IntoApiResponse
 };
 use askama_axum::Template;
 use axum::{
@@ -21,6 +20,7 @@ use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
 use sqlx::Pool;
+use tracing_subscriber::field::display::Messages;
 
 use crate::cachestore::Session;
 use crate::idtoken::verify_idtoken;
@@ -34,7 +34,8 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/signin", get(signinpage))
         .api_route("/login", post(login))
-        // .api_route("/logout", get(logout))
+        .api_route("/logout", get(logout))
+        .api_route("/me", get(me))
         .api_route("/createsession", get(create_session))
         // .api_route(
         //     "/",
@@ -46,6 +47,60 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
 #[derive(Debug, Deserialize)]
 struct FormData {
     credential: Option<String>,
+}
+
+async fn me(jar: CookieJar) -> impl IntoApiResponse {
+    if let Some(session_id) = jar.get("session_id") {
+        println!("session_id: {}", session_id.value());
+        let messages = format!("session_id: {}", session_id.value());
+        (StatusCode::OK, messages).into_response()
+    } else {
+        (StatusCode::UNAUTHORIZED, "session_id not found in Cookie").into_response()
+    }
+}
+
+// impl AxumOperationHandler<axum_extra::extract::CookieJar, Result<impl IntoApiResponse, StatusCode>> for fn(axum_extra::extract::CookieJar) -> impl Future<Output = impl IntoApiResponse> {
+//     fn call(&self, jar: axum_extra::extract::CookieJar) -> Result<impl IntoApiResponse, StatusCode> {
+//         (*self)(jar)
+//     }
+// }
+
+async fn logout(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoApiResponse {
+
+    // let jar: CookieJar = 
+    // let mut session_deleted = false;
+
+    // if let Some(jar) = jar {
+    //     if let Some(session_id) = jar.get("session_id") {
+    //         if let Err(e) = state.cache.delete_session(session_id.value()).await {
+    //             eprintln!("Failed to delete session: {}", e);
+    //         } else {
+    //             session_deleted = true;
+    //         }
+    //     }
+
+    //     // Remove cookies
+    //     let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
+    //     let mut new_jar = jar.clone();
+    //     for name in cookies_to_remove.iter() {
+    //         new_jar = new_jar.remove(Cookie::new(*name, ""));
+    //     }
+
+    //     let message = if session_deleted {
+    //         "Session deleted successfully"
+    //     } else {
+    //         "No active session found"
+    //     };
+
+    //     // (jar, StatusCode::OK, message)
+    //     (StatusCode::OK, message).into_response()
+    //     // (StatusCode::OK, jar, message).into_response()
+    // } else {
+    //     (StatusCode::OK, "No active session found").into_response()
+    // }
+    (StatusCode::OK, "No yet implemented").into_response()
 }
 
 async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiResponse {
