@@ -74,6 +74,68 @@ async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
 //     }
 // }
 
+async fn _logout(
+    State(state): State<Arc<AppState>>,
+    NoApi(jar): NoApi<Option<CookieJar>>,
+) -> impl IntoApiResponse {
+    let mut session_deleted = false;
+
+    if let Some(jar) = jar {
+        if let Some(session_id) = jar.get("session_id") {
+            if let Err(e) = state.cache.delete_session(session_id.value()).await {
+                eprintln!("Failed to delete session: {}", e);
+            } else {
+                session_deleted = true;
+            }
+        }
+    }
+
+    let message = if session_deleted {
+        serde_json::json!({
+            "message": "Session deleted successfully",
+        })
+    } else {
+        serde_json::json!({
+            "message": "No active session found",
+        })
+    };
+
+    let mut response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Json(message).into_response().into_body())
+        .unwrap();
+
+    // let mut response = StatusCode::OK.into_response();
+
+    // Remove cookies
+    let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
+    for name in cookies_to_remove.iter() {
+        let removal_cookie = Cookie::build((*name, ""))
+            // .path("/")
+            // .max_age(Duration::seconds(-1))
+            .max_age(Duration::seconds(0))
+            .expires(OffsetDateTime::now_utc() - Duration::days(365))
+            // .http_only(true)
+            // .secure(true)
+            .build();
+
+        if let Ok(header_value) = removal_cookie.to_string().parse() {
+            response
+                .headers_mut()
+                .append(header::SET_COOKIE, header_value);
+        }
+    }
+
+    // let message = if session_deleted {
+    //     "Session deleted successfully"
+    // } else {
+    //     "No active session found"
+    // };
+
+    response
+}
+
 async fn logout(
     State(state): State<Arc<AppState>>,
     NoApi(jar): NoApi<Option<CookieJar>>,
@@ -96,12 +158,13 @@ async fn logout(
         //     &jar.remove(Cookie::new(*name, ""));
         //     println!("new_jar.{}: {:?}", name, jar.get(name));
         // }
-        
+
         let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
         for name in cookies_to_remove.iter() {
-            jar = jar.remove(Cookie::new(*name, ""));
+            // jar = jar.remove(Cookie::new(*name, ""));
+            jar = jar.remove(Cookie::build((*name, "")).path("/"));
         }
-                println!("new_jar: {:?}", jar);
+        println!("new_jar: {:?}", jar);
 
         let message = if session_deleted {
             serde_json::json!({
@@ -120,6 +183,7 @@ async fn logout(
             .unwrap();
 
         (jar, response).into_response()
+        // (jar, Redirect::to("/auth/signin")).into_response()
     } else {
         (StatusCode::OK, "No active session found").into_response()
     }
