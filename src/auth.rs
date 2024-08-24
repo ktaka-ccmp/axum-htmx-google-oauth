@@ -24,6 +24,7 @@ use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
 use sqlx::Pool;
+use sha2::{Digest, Sha256};
 
 use crate::cachestore::Session;
 use crate::idtoken::verify_idtoken;
@@ -62,49 +63,6 @@ async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
             Json(serde_json::json!({
             "message": "session_id not found in Cookie"})),
         )
-    }
-}
-
-async fn logout(
-    State(state): State<Arc<AppState>>,
-    NoApi(jar): NoApi<Option<CookieJar>>,
-) -> impl IntoApiResponse {
-    let mut session_deleted = false;
-
-    if let Some(mut jar) = jar {
-        if let Some(session_id) = jar.get("session_id") {
-            if let Err(e) = state.cache.delete_session(session_id.value()).await {
-                eprintln!("Failed to delete session: {}", e);
-            } else {
-                session_deleted = true;
-            }
-        }
-
-        let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
-        for name in cookies_to_remove.iter() {
-            jar = jar.remove(Cookie::build((*name, "")).path("/"));
-        }
-
-        let message = if session_deleted {
-            serde_json::json!({
-                "message": "Session deleted successfully",
-            })
-        } else {
-            serde_json::json!({
-                "message": "No active session found",
-            })
-        };
-
-        let response = Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Json(message).into_response().into_body())
-            .unwrap();
-
-        // (jar, Redirect::to("/auth/me")).into_response()
-        (jar, response).into_response()
-    } else {
-        (StatusCode::OK, "No active session found").into_response()
     }
 }
 
@@ -166,7 +124,48 @@ async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiR
     }
 }
 
-use sha2::{Digest, Sha256};
+async fn logout(
+    State(state): State<Arc<AppState>>,
+    NoApi(jar): NoApi<Option<CookieJar>>,
+) -> impl IntoApiResponse {
+    let mut session_deleted = false;
+
+    if let Some(mut jar) = jar {
+        if let Some(session_id) = jar.get("session_id") {
+            if let Err(e) = state.cache.delete_session(session_id.value()).await {
+                eprintln!("Failed to delete session: {}", e);
+            } else {
+                session_deleted = true;
+            }
+        }
+
+        let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
+        for name in cookies_to_remove.iter() {
+            jar = jar.remove(Cookie::build((*name, "")).path("/"));
+        }
+
+        let message = if session_deleted {
+            serde_json::json!({
+                "message": "Session deleted successfully",
+            })
+        } else {
+            serde_json::json!({
+                "message": "No active session found",
+            })
+        };
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Json(message).into_response().into_body())
+            .unwrap();
+
+        // (jar, Redirect::to("/auth/me")).into_response()
+        (jar, response).into_response()
+    } else {
+        (StatusCode::OK, "No active session found").into_response()
+    }
+}
 
 fn new_cookie(session: &Session) -> CookieJar {
     let max_age = Duration::seconds(3600); // Replace with your actual session_max_age value
