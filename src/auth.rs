@@ -39,14 +39,6 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
         .api_route("/login", post_with(login, |op| op.tag("auth")))
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/me", get_with(me, |op| op.tag("auth")))
-        .api_route(
-            "/createsession",
-            get_with(create_session, |op| op.tag("auth")),
-        )
-        // .api_route(
-        //     "/",
-        //     get(create_session).layer(axum::middleware::from_fn(delete_session)),
-        // )
         .with_state(state)
 }
 
@@ -58,15 +50,10 @@ struct FormData {
 async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
     if let Some(session_id) = jar.get("session_id") {
         println!("session_id: {}", session_id.value());
-        // let messages = format!("session_id: {}", session_id.value());
-        // let messages = serde_json::json!({
-        //     "message": "Session deleted successfully",
-        // });
-
         (
             StatusCode::OK,
             Json(serde_json::json!({
-                "message": "Session deleted successfully",
+                "session_id": session_id.value(),
             })),
         )
     } else {
@@ -310,43 +297,4 @@ pub async fn get_current_user(
         );
         None
     }
-}
-
-async fn _delete_session(
-    cookiejar: Option<CookieJar>,
-    req: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
-) -> impl IntoApiResponse {
-    if let Some(cookiejar) = cookiejar {
-        if let Some(_session_id) = cookiejar.get("session_id") {
-            let _ = cookiejar.remove(Cookie::from("session_id"));
-        }
-    }
-    next.run(req).await.into_response()
-}
-
-async fn create_session() -> Result<(CookieJar, Redirect), StatusCode> {
-    if let Some(session_id) = authorize_and_create_session().await {
-        let jar = CookieJar::new();
-        let cookie = Cookie::build(("session_id", session_id))
-            .path("/")
-            .secure(true)
-            .http_only(true)
-            .same_site(SameSite::Strict)
-            .max_age(Duration::seconds(60 * 5))
-            .expires(OffsetDateTime::now_utc() + Duration::seconds(60 * 5));
-
-        Ok((jar.add(cookie), Redirect::to("/spa/content.secret2")))
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
-
-async fn authorize_and_create_session() -> Option<String> {
-    // Check if the token is valid
-    // If valid, create a session and return the session ID
-    // If invalid, return None
-    // None
-    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-    Some(format!("ssid_{}", now))
 }
