@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use aide::{
     axum::{
-        routing::{get, get_with, post, post_with},
-        ApiRouter, AxumOperationHandler, IntoApiResponse,
+        routing::{get_with, post_with},
+        ApiRouter, IntoApiResponse,
     },
     NoApi,
 };
@@ -24,7 +24,6 @@ use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
 use sqlx::Pool;
-use tracing_subscriber::field::display::Messages;
 
 use crate::cachestore::Session;
 use crate::idtoken::verify_idtoken;
@@ -59,12 +58,23 @@ struct FormData {
 async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
     if let Some(session_id) = jar.get("session_id") {
         println!("session_id: {}", session_id.value());
-        let messages = format!("session_id: {}", session_id.value());
-        (StatusCode::OK, messages).into_response()
-        // Ok(())
+        // let messages = format!("session_id: {}", session_id.value());
+        // let messages = serde_json::json!({
+        //     "message": "Session deleted successfully",
+        // });
+
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "message": "Session deleted successfully",
+            })),
+        )
     } else {
-        (StatusCode::UNAUTHORIZED, "session_id not found in Cookie").into_response()
-        // Err(StatusCode::UNAUTHORIZED)
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+            "message": "session_id not found in Cookie"})),
+        )
     }
 }
 
