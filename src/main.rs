@@ -47,11 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api.json", get(serve_api));
 
     let app = ApiRouter::new()
-        .api_route("/", get(|| async { Redirect::permanent("/spa") }))
-        .api_route("/docs/", get(|| async { Redirect::permanent("/docs") }))
-        .api_route("/spa/", get(|| async { Redirect::permanent("/spa") }))
-        .api_route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))
-        .api_route("/auth/", get(|| async { Redirect::permanent("/auth") }))
+        .route("/", get(|| async { Redirect::permanent("/spa") }))
+        .route("/docs/", get(|| async { Redirect::permanent("/docs") }))
+        .route("/spa/", get(|| async { Redirect::permanent("/spa") }))
+        .route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))
+        .route("/auth/", get(|| async { Redirect::permanent("/auth") }))
         .nest("/docs", docs_router)
         .nest("/api", api::create_router(pool.clone()))
         .nest("/api2", api2::create_router(pool.clone()))
