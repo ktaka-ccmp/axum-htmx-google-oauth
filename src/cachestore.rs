@@ -31,7 +31,7 @@ pub enum CacheStoreError {
 pub struct Session {
     pub session_id: String,
     pub csrf_token: String,
-    user_id: i64,
+    pub user_id: i64,
     pub email: String,
     expires: i64,
 }

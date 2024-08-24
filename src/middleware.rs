@@ -1,7 +1,11 @@
 use aide::axum::IntoApiResponse;
-use axum::{http::StatusCode, response::IntoResponse};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
+
+use crate::auth::get_current_user;
+use crate::AppState;
+use std::sync::Arc;
 
 /// Represents an error response.
 #[derive(Serialize)]
@@ -25,6 +29,7 @@ pub async fn check_hx_request(
 }
 
 pub async fn check_auth(
+    State(_state): State<Arc<AppState>>,
     cookie: Option<CookieJar>,
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
@@ -41,7 +46,7 @@ pub async fn check_auth(
             println!("Session ID: {:?}", session_id);
         } else {
             println!("Session ID not found in cookie.");
-            return (StatusCode::UNAUTHORIZED, axum::Json(error_response)).into_response();
+            (StatusCode::UNAUTHORIZED, axum::Json(error_response)).into_response();
         }
     } else {
         println!("Cookie not found.");
@@ -49,4 +54,40 @@ pub async fn check_auth(
     }
 
     next.run(req).await.into_response()
+}
+
+pub async fn is_authenticated(
+    State(state): State<Arc<AppState>>,
+    cookiejar: Option<CookieJar>,
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> impl IntoApiResponse {
+    let error_response = serde_json::json!({
+        "message": "Authoriztion required.",
+    });
+
+    if let Some(cookiejar) = cookiejar {
+        if let Some(session_id) = cookiejar.get("session_id") {
+            println!("Session ID: {:?}", session_id.value());
+            let user = get_current_user(session_id.value(), State(state)).await;
+            if let Some(user) = user {
+                if user.enabled.unwrap() {
+                    println!("Authenticated as: {}", user.email);
+                    next.run(req).await.into_response()
+                } else {
+                    println!("Disabled user.");
+                    (StatusCode::FORBIDDEN, Json(error_response)).into_response()
+                }
+            } else {
+                println!("NotAuthenticated");
+                (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+            }
+        } else {
+            println!("Session ID not found in cookie.");
+            (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+        }
+    } else {
+        println!("Cookie not found.");
+        (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+    }
 }

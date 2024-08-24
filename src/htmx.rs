@@ -8,8 +8,8 @@ use axum::{
 use sqlx::Pool;
 use tracing::error;
 
-use crate::models::{Customer, Params};
 use crate::middleware::check_hx_request;
+use crate::models::{Customer, Params};
 use crate::DB;
 
 /// Creates the API router with the given SQLite pool.

@@ -30,7 +30,7 @@ use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
 use crate::models::User;
 use crate::models::{Error, IdInfo};
-use crate::user::{create_user, get_user_by_sub};
+use crate::user::{create_user, get_user_by_id, get_user_by_sub};
 use crate::{AppState, DB};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -114,9 +114,8 @@ async fn logout(
             .body(Json(message).into_response().into_body())
             .unwrap();
 
-        // (jar, response).into_response()
-        (jar, Redirect::to("/auth/me")).into_response()
-        // (jar, Redirect::to("/auth/signin")).into_response()
+        // (jar, Redirect::to("/auth/me")).into_response()
+        (jar, response).into_response()
     } else {
         (StatusCode::OK, "No active session found").into_response()
     }
@@ -146,12 +145,13 @@ async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiR
             Ok(user) => {
                 let message = serde_json::json!({
                     "message": "Created user",
-                    "user": user
+                    "user": user.email,
                 });
 
                 let response = Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "application/json")
+                    .header("HX-Trigger", "ReloadNavbar")
                     .body(Json(message).into_response().into_body())
                     .unwrap();
 
@@ -162,8 +162,7 @@ async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiR
                     .unwrap();
 
                 let jar = new_cookie(&session);
-                // (jar, response).into_response()
-                (jar, Redirect::to("/auth/me")).into_response()
+                (jar, response).into_response()
             }
             Err(e) => {
                 let message = Error {
@@ -287,16 +286,31 @@ async fn signinpage() -> Html<String> {
     Html(template.render().unwrap())
 }
 
-// pub struct User;
-
-// #[async_trait]
-// impl<S> FromRequestParts<S> for User {
-//     type Rejection = Infallible;
-
-//     async fn from_request_parts(_parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-//         Ok(User)
-//     }
-// }
+pub async fn get_current_user(
+    session_id: &str,
+    State(state): State<Arc<AppState>>,
+) -> Option<User> {
+    let session = state.cache.get_session(session_id).await.unwrap();
+    if let Some(session) = session {
+        println!(
+            "get_current_user: Session found for the session_id: {}",
+            session_id
+        );
+        match get_user_by_id(&session.user_id, &state.pool).await {
+            Ok(user) => user,
+            Err(e) => {
+                eprintln!("Error getting user: {}", e);
+                None
+            }
+        }
+    } else {
+        println!(
+            "get_current_user: No session found for the session_id: {}",
+            session_id
+        );
+        None
+    }
+}
 
 async fn _delete_session(
     cookiejar: Option<CookieJar>,

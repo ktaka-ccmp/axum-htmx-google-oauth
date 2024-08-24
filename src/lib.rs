@@ -11,8 +11,8 @@ pub mod models; // Ensure this is also included if models are in a separate file
 pub mod spa;
 pub mod user;
 
-use std::sync::Arc;
 use sqlx::{Pool, Sqlite};
+use std::sync::Arc;
 pub type DB = Sqlite;
 
 pub struct AppState {

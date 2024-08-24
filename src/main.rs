@@ -16,14 +16,13 @@ use api_server_htmx::api;
 use api_server_htmx::api2;
 use api_server_htmx::asset;
 use api_server_htmx::auth;
+use api_server_htmx::cachestore;
 use api_server_htmx::htmx;
 use api_server_htmx::htmx_secret;
 use api_server_htmx::spa;
 use api_server_htmx::user;
-use api_server_htmx::cachestore;
 
 use api_server_htmx::AppState;
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_connection_str = std::env::var("DATABASE_URL")
         .expect("Check your .env file.\nDATABASE_URL environment variable must be set.");
     let pool = Pool::connect(&db_connection_str).await?;
-    let cache: Arc<dyn cachestore::CacheStore + Send + Sync> = cachestore::get_cache_store().await?;
+    let cache: Arc<dyn cachestore::CacheStore + Send + Sync> =
+        cachestore::get_cache_store().await?;
 
     let state = Arc::new(AppState {
         pool: pool.clone(),
@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/api2", api2::create_router(pool.clone()))
         .nest("/spa", spa::create_router())
         .nest("/htmx", htmx::create_router(pool.clone()))
-        .nest("/htmx", htmx_secret::create_router())
+        .nest("/htmx", htmx_secret::create_router(state.clone()))
         .nest("/asset", asset::create_router())
         .nest("/auth", auth::create_router(state.clone()))
         .nest("/crud", user::create_router(pool.clone()))
