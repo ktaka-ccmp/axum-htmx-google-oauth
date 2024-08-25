@@ -11,7 +11,7 @@ use askama_axum::Template;
 use axum::{
     extract::State,
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
     Json,
 };
 use axum_extra::extract::cookie::CookieJar;
@@ -23,8 +23,8 @@ use cookie::{
 use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
-use sqlx::Pool;
 use sha2::{Digest, Sha256};
+use sqlx::Pool;
 
 use crate::cachestore::Session;
 use crate::idtoken::verify_idtoken;
@@ -40,6 +40,7 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
         .api_route("/login", post_with(login, |op| op.tag("auth")))
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/me", get_with(me, |op| op.tag("auth")))
+        .api_route("/me2", get_with(me2, |op| op.tag("auth")))
         .with_state(state)
 }
 
@@ -62,6 +63,32 @@ async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({
             "message": "session_id not found in Cookie"})),
+        )
+    }
+}
+
+async fn me2(jar: Option<CookieJar>) -> impl IntoApiResponse {
+    if let Some(jar) = jar {
+        if let Some(session_id) = jar.get("session_id") {
+            println!("session_id: {}", session_id.value());
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "session_id": session_id.value(),
+                })),
+            )
+        } else {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                "message": "session_id not found in Cookie"})),
+            )
+        }
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+            "message": "CookieJar not found"})),
         )
     }
 }
@@ -126,7 +153,7 @@ async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiR
 
 async fn logout(
     State(state): State<Arc<AppState>>,
-    NoApi(jar): NoApi<Option<CookieJar>>,
+    jar: Option<CookieJar>,
 ) -> impl IntoApiResponse {
     let mut session_deleted = false;
 

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aide = { version = "0.13.4", features = ["axum", "scalar", "axum-extra-query", "axum-headers"] }
+aide = { version = "0.13.4", features = ["axum-extra-cookie", "axum-extra-form", "axum-extra-query", "axum-headers", "axum-multipart", "jwt-authorizer", "macros", "scalar", "serde_qs"] }
 askama = { version = "0.12.1", features = ["with-axum"] }
 askama_axum = "0.4.0"
 async-trait = "0.1.81"
