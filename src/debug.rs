@@ -5,9 +5,9 @@ use aide::{
     axum::{routing::get_with, ApiRouter, IntoApiResponse},
     NoApi,
 };
+use axum::http::header::HeaderMap;
 use axum::{http::StatusCode, response::Html, Json};
 use axum_extra::extract::cookie::CookieJar;
-use axum::http::header::HeaderMap;
 
 use askama_axum::Template;
 
@@ -17,7 +17,10 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
         .api_route("/me", get_with(me, |op| op.tag("debug")))
         .api_route("/me2", get_with(me2, |op| op.tag("debug")))
         .api_route("/headers", get_with(show_headers, |op| op.tag("debug")))
-        .api_route("/headers2", get_with(show_headers_all, |op| op.tag("debug")))
+        .api_route(
+            "/headers2",
+            get_with(show_headers_all, |op| op.tag("debug")),
+        )
         .with_state(state)
 }
 
@@ -88,37 +91,37 @@ async fn me2(jar: Option<CookieJar>) -> impl IntoApiResponse {
 }
 
 async fn show_headers(headers: HeaderMap) -> impl IntoApiResponse {
-
     let mut headers_map = serde_json::Map::new();
 
     let heade_of_interests = vec!["host", "accept", "x-csrf-token", "x-user-token"];
 
     for header in heade_of_interests {
         if headers.get(header).is_some() {
-            headers_map.insert(header.to_string(), serde_json::Value::String(headers.get(header).unwrap().to_str().unwrap().to_string()));
+            headers_map.insert(
+                header.to_string(),
+                serde_json::Value::String(
+                    headers.get(header).unwrap().to_str().unwrap().to_string(),
+                ),
+            );
         }
     }
 
     // println!("{:?}", headers_map);
 
-    (
-        StatusCode::OK,
-        Json(headers_map),
-    )
+    (StatusCode::OK, Json(headers_map))
 }
 
 async fn show_headers_all(headers: HeaderMap) -> impl IntoApiResponse {
-
     let mut headers_map = serde_json::Map::new();
 
     for (header_name, header_value) in headers.iter() {
-        headers_map.insert(header_name.as_str().to_string(), serde_json::Value::String(header_value.to_str().unwrap().to_string()));
+        headers_map.insert(
+            header_name.as_str().to_string(),
+            serde_json::Value::String(header_value.to_str().unwrap().to_string()),
+        );
     }
 
     // println!("{:?}", headers_map);
 
-    (
-        StatusCode::OK,
-        Json(headers_map),
-    )
+    (StatusCode::OK, Json(headers_map))
 }

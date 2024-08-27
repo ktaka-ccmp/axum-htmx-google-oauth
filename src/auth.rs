@@ -8,13 +8,7 @@ use aide::{
     NoApi,
 };
 use askama_axum::Template;
-use axum::{
-    extract::State,
-    http::StatusCode,
-    http::HeaderMap,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::HeaderMap, http::StatusCode, response::IntoResponse, Json};
 use axum_extra::extract::cookie::CookieJar;
 use chrono::Utc;
 use cookie::{
@@ -28,10 +22,10 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::Pool;
 
+use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
 use crate::models::{Error, IdInfo, Session, User, XCsrfToken, XUserToken};
 use crate::user::{create_user, get_user_by_id, get_user_by_sub};
-use crate::idtoken::verify_idtoken;
 use crate::{AppState, DB};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -150,7 +144,6 @@ async fn refresh_token(
     header: HeaderMap,
     mut cookiejar: Option<CookieJar>,
 ) -> impl IntoApiResponse {
-
     let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
         Ok(session) => session,
         Err(e) => {
@@ -367,18 +360,28 @@ async fn csrf_verify(t: XCsrfToken, session: Session) -> Result<XCsrfToken, Erro
         Ok(t)
     } else {
         Err(Error {
-            error: format!("X-CSRF-TOKEN: {} did not match the csrf_token in the record: {}.", t.x_csrf_token, session.csrf_token),
+            error: format!(
+                "X-CSRF-TOKEN: {} did not match the csrf_token in the record: {}.",
+                t.x_csrf_token, session.csrf_token
+            ),
         })
     }
 }
 
 async fn user_verify(t: XUserToken, session: Session) -> Result<XUserToken, Error> {
     if t.x_user_token == hash_email(&session.email) {
-        println!("User Token: {} matched for {}.", t.x_user_token, session.email);
+        println!(
+            "User Token: {} matched for {}.",
+            t.x_user_token, session.email
+        );
         Ok(t)
     } else {
         Err(Error {
-            error: format!("X-USER-TOKEN: {} did not match the hash of email in the record: {}.", t.x_user_token, hash_email(&session.email)),
+            error: format!(
+                "X-USER-TOKEN: {} did not match the hash of email in the record: {}.",
+                t.x_user_token,
+                hash_email(&session.email)
+            ),
         })
     }
 }

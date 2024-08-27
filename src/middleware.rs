@@ -1,12 +1,20 @@
 use aide::axum::IntoApiResponse;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    body::Body,
+    extract::State,
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::IntoResponse,
+    Json,
+};
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
+use serde_json::json;
+use std::sync::Arc;
 
-use crate::AppState;
 use crate::models::User;
 use crate::user::get_user_by_id;
-use std::sync::Arc;
+use crate::AppState;
 
 /// Represents an error response.
 #[derive(Serialize)]
@@ -57,88 +65,80 @@ pub async fn check_auth(
     next.run(req).await.into_response()
 }
 
-pub async fn is_authenticated_admin(
+pub async fn authenticate(
+    is_admin_required: bool,
     State(state): State<Arc<AppState>>,
     cookiejar: Option<CookieJar>,
-    req: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
+    req: Request<Body>,
+    next: Next,
 ) -> impl IntoApiResponse {
-    let error_response = serde_json::json!({
-        "message": "Authoriztion required.",
-    });
+    let error_response = json!({"message": "Authorization required."});
 
-    if let Some(cookiejar) = cookiejar {
-        if let Some(session_id) = cookiejar.get("session_id") {
-            println!("Session ID: {:?}", session_id.value());
-            let user = get_current_user(session_id.value(), State(state)).await;
-            if let Some(user) = user {
-                if user.enabled.unwrap() {
-                    let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
-                    if user.email == admin_email {
-                        println!("Authenticated as admin: {}", user.email);
-                        next.run(req).await.into_response()
-                    } else {
-                        println!("Not an admin user.");
-                        (StatusCode::FORBIDDEN, Json(error_response)).into_response()
-                    }
-                } else {
-                    println!("Disabled user.");
-                    (StatusCode::FORBIDDEN, Json(error_response)).into_response()
-                }
-            } else {
-                println!("NotAuthenticated");
-                (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+    async fn process_authentication(
+        is_admin_required: bool,
+        state: Arc<AppState>,
+        session_id: &str,
+    ) -> Result<(), StatusCode> {
+        let user = get_current_user(session_id, State(state)).await;
+        if let Some(user) = user {
+            if !user.enabled.unwrap_or(false) {
+                println!("Disabled user.");
+                return Err(StatusCode::FORBIDDEN);
             }
+            if is_admin_required {
+                let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
+                if user.email != admin_email {
+                    println!("Not an admin user.");
+                    return Err(StatusCode::FORBIDDEN);
+                }
+                println!("Authenticated as admin: {}", user.email);
+            } else {
+                println!("Authenticated as: {}", user.email);
+            }
+            Ok(())
         } else {
+            println!("NotAuthenticated");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
+
+    match cookiejar.and_then(|jar| {
+        jar.get("session_id")
+            .map(|cookie| cookie.value().to_string())
+    }) {
+        Some(session_id) => {
+            println!("Session ID: {:?}", session_id);
+            match process_authentication(is_admin_required, state, &session_id).await {
+                Ok(_) => next.run(req).await.into_response(),
+                Err(status) => (status, Json(error_response)).into_response(),
+            }
+        }
+        None => {
             println!("Session ID not found in cookie.");
             (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
         }
-    } else {
-        println!("Cookie not found.");
-        (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
     }
+}
+
+pub async fn is_authenticated_admin(
+    State(state): State<Arc<AppState>>,
+    cookiejar: Option<CookieJar>,
+    req: Request<Body>,
+    next: Next,
+) -> impl IntoApiResponse {
+    authenticate(true, State(state), cookiejar, req, next).await
 }
 
 pub async fn is_authenticated(
     State(state): State<Arc<AppState>>,
     cookiejar: Option<CookieJar>,
-    req: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
+    req: Request<Body>,
+    next: Next,
 ) -> impl IntoApiResponse {
-    let error_response = serde_json::json!({
-        "message": "Authoriztion required.",
-    });
-
-    if let Some(cookiejar) = cookiejar {
-        if let Some(session_id) = cookiejar.get("session_id") {
-            println!("Session ID: {:?}", session_id.value());
-            let user = get_current_user(session_id.value(), State(state)).await;
-            if let Some(user) = user {
-                if user.enabled.unwrap() {
-                    println!("Authenticated as: {}", user.email);
-                    next.run(req).await.into_response()
-                } else {
-                    println!("Disabled user.");
-                    (StatusCode::FORBIDDEN, Json(error_response)).into_response()
-                }
-            } else {
-                println!("NotAuthenticated");
-                (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
-            }
-        } else {
-            println!("Session ID not found in cookie.");
-            (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
-        }
-    } else {
-        println!("Cookie not found.");
-        (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
-    }
+    authenticate(false, State(state), cookiejar, req, next).await
 }
 
-async fn get_current_user(
-    session_id: &str,
-    State(state): State<Arc<AppState>>,
-) -> Option<User> {
+async fn get_current_user(session_id: &str, State(state): State<Arc<AppState>>) -> Option<User> {
     let session = state.cache.get_session(session_id).await.unwrap();
     if let Some(session) = session {
         println!(
