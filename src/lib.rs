@@ -10,6 +10,7 @@ pub mod middleware;
 pub mod models; // Ensure this is also included if models are in a separate file
 pub mod spa;
 pub mod user;
+pub mod debug;
 
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;

@@ -35,7 +35,6 @@ use crate::{AppState, DB};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/signin", get_with(signinpage, |op| op.tag("auth")))
         .api_route("/login", post_with(login, |op| op.tag("auth")))
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/me", get_with(me, |op| op.tag("auth")))
@@ -347,6 +346,27 @@ fn hash_email(email: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+
+
+// def csrf_verify(csrf_token: str, session: dict):
+//     print("### Debug: csrf_verify: ", csrf_token)
+//     if hmac.compare_digest(csrf_token, session['csrf_token']):
+//     # if csrf_token == session['csrf_token']:
+//         return csrf_token
+//     else:
+//         raise HTTPException(status_code=403, detail="CSRF token: "+csrf_token+" did not match the record.")
+
+// def user_verify(user_token: str, session: dict):
+//     print("### Debug: user_verify: ", user_token)
+//     if hmac.compare_digest(user_token, hash_email(session['email'])):
+//     # if user_token == hash_email(session["email"]):
+//         return user_token
+//     else:
+//         raise HTTPException(status_code=403, detail="USER token: "+user_token+" did not match the record.")
+
+
+
+
 async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
     match get_user_by_sub(&idinfo.sub, &pool).await {
         Ok(Some(user)) => Ok(user),
@@ -382,52 +402,4 @@ async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
     };
     println!("idinfo: {:?}", idinfo);
     Ok(idinfo)
-}
-
-#[derive(Template)]
-#[template(path = "signin.j2")]
-struct SigninTemplate {
-    title: String,
-    client_id: String,
-    nonce: String,
-    login_url: String,
-}
-
-async fn signinpage() -> Html<String> {
-    let client_id =
-        std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
-    let signin_template = SigninTemplate {
-        title: "Signin".to_string(),
-        client_id,
-        nonce: "n-0S6_WzA2Mj".to_string(),
-        login_url: "/auth/login".to_string(),
-    };
-    let template = signin_template;
-    Html(template.render().unwrap())
-}
-
-pub async fn get_current_user(
-    session_id: &str,
-    State(state): State<Arc<AppState>>,
-) -> Option<User> {
-    let session = state.cache.get_session(session_id).await.unwrap();
-    if let Some(session) = session {
-        println!(
-            "get_current_user: Session found for the session_id: {}",
-            session_id
-        );
-        match get_user_by_id(&session.user_id, &state.pool).await {
-            Ok(user) => user,
-            Err(e) => {
-                eprintln!("Error getting user: {}", e);
-                None
-            }
-        }
-    } else {
-        println!(
-            "get_current_user: No session found for the session_id: {}",
-            session_id
-        );
-        None
-    }
 }

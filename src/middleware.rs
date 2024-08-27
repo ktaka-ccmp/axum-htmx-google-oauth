@@ -3,8 +3,9 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
 
-use crate::auth::get_current_user;
 use crate::AppState;
+use crate::models::User;
+use crate::user::get_user_by_id;
 use std::sync::Arc;
 
 /// Represents an error response.
@@ -89,5 +90,31 @@ pub async fn is_authenticated(
     } else {
         println!("Cookie not found.");
         (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+    }
+}
+
+async fn get_current_user(
+    session_id: &str,
+    State(state): State<Arc<AppState>>,
+) -> Option<User> {
+    let session = state.cache.get_session(session_id).await.unwrap();
+    if let Some(session) = session {
+        println!(
+            "get_current_user: Session found for the session_id: {}",
+            session_id
+        );
+        match get_user_by_id(&session.user_id, &state.pool).await {
+            Ok(user) => user,
+            Err(e) => {
+                eprintln!("Error getting user: {}", e);
+                None
+            }
+        }
+    } else {
+        println!(
+            "get_current_user: No session found for the session_id: {}",
+            session_id
+        );
+        None
     }
 }
