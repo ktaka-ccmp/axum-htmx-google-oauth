@@ -1,14 +1,14 @@
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use rand::{thread_rng, Rng};
 use redis;
 use redis::{AsyncCommands, Client as RedisClient};
-use serde::{Deserialize, Serialize};
 use sqlx::Pool;
 use std::sync::Arc;
-use std::time::Duration;
 use thiserror::Error;
+// use cookie::time::{Duration, OffsetDateTime};
 
+use crate::models::Session;
 use crate::DB;
 
 #[derive(Error, Debug)]
@@ -25,15 +25,6 @@ pub enum CacheStoreError {
     EnvVarError(#[from] std::env::VarError),
     #[error("Unknown error: {0}")]
     Unknown(String),
-}
-
-#[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
-pub struct Session {
-    pub session_id: String,
-    pub csrf_token: String,
-    pub user_id: i64,
-    pub email: String,
-    expires: i64,
 }
 
 #[async_trait]
@@ -69,6 +60,12 @@ impl CacheStore for SqlCacheStore {
     }
 
     async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
+        let max_age_sec = std::env::var("SESSION_MAX_AGE")
+            .expect("SESSION_MAX_AGE must be set")
+            .parse::<i64>()
+            .expect("SESSION_MAX_AGE must be an integer");
+        let max_age = Duration::seconds(max_age_sec);
+
         let session_id = thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
             .take(64)
@@ -79,7 +76,7 @@ impl CacheStore for SqlCacheStore {
             .take(32)
             .map(char::from)
             .collect::<String>();
-        let expires = Utc::now() + Duration::from_secs(3600); // 1 hour expiration
+        let expires = Utc::now() + max_age;
 
         let session = sqlx::query_as::<_, Session>(
             "INSERT INTO sessions (session_id, csrf_token, user_id, email, expires) 
@@ -142,6 +139,12 @@ impl CacheStore for RedisCacheStore {
     }
 
     async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
+        let max_age_sec = std::env::var("SESSION_MAX_AGE")
+            .expect("SESSION_MAX_AGE must be set")
+            .parse::<i64>()
+            .expect("SESSION_MAX_AGE must be an integer");
+        let max_age = Duration::seconds(max_age_sec);
+
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         let session_id = thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
@@ -153,7 +156,7 @@ impl CacheStore for RedisCacheStore {
             .take(32)
             .map(char::from)
             .collect::<String>();
-        let expires = Utc::now() + Duration::from_secs(3600); // 1 hour expiration
+        let expires = Utc::now() + max_age;
 
         let session = Session {
             session_id: session_id.clone(),

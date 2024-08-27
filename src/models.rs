@@ -15,7 +15,7 @@ pub struct CustomerId {
     pub id: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Error {
     pub error: String,
 }
@@ -56,4 +56,13 @@ pub struct User {
     pub enabled: Option<bool>,
     pub admin: Option<bool>,
     pub picture: Option<String>,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
+pub struct Session {
+    pub session_id: String,
+    pub csrf_token: String,
+    pub user_id: i64,
+    pub email: String,
+    pub expires: i64,
 }

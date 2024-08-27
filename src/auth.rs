@@ -15,6 +15,7 @@ use axum::{
     Json,
 };
 use axum_extra::extract::cookie::CookieJar;
+use chrono::Utc;
 use cookie::{
     time::{Duration, OffsetDateTime},
     Cookie, SameSite,
@@ -26,11 +27,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::Pool;
 
-use crate::cachestore::Session;
 use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
-use crate::models::User;
-use crate::models::{Error, IdInfo};
+use crate::models::{Error, IdInfo, Session, User};
 use crate::user::{create_user, get_user_by_id, get_user_by_sub};
 use crate::{AppState, DB};
 
@@ -41,6 +40,10 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/me", get_with(me, |op| op.tag("auth")))
         .api_route("/me2", get_with(me2, |op| op.tag("auth")))
+        .api_route(
+            "/refresh_token",
+            get_with(refresh_token, |op| op.tag("auth")),
+        )
         .with_state(state)
 }
 
@@ -127,13 +130,7 @@ async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiR
                     .body(Json(message).into_response().into_body())
                     .unwrap();
 
-                let session = state
-                    .cache
-                    .create_session(user.id.unwrap(), &user.email)
-                    .await
-                    .unwrap();
-
-                let jar = new_cookie(&session);
+                let jar = new_session(user, state).await;
                 (jar, response).into_response()
             }
             Err(e) => {
@@ -194,8 +191,118 @@ async fn logout(
     }
 }
 
+async fn refresh_token(
+    State(state): State<Arc<AppState>>,
+    cookiejar: Option<CookieJar>,
+) -> impl IntoApiResponse {
+    match cookiejar {
+        None => {
+            let message = Error {
+                error: format!("Error: CookieJar not found"),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+        }
+        Some(cookiejar) => {
+            let newjar = mutate_session(Some(cookiejar), state).await;
+            match newjar {
+                Ok(newjar) => {
+                    let message = serde_json::json!({
+                        "ok": true,
+                        "session_id": newjar.get("session_id").unwrap().value(),
+                        "csrf_token": newjar.get("csrf_token").unwrap().value(),
+                        "user_token": newjar.get("user_token").unwrap().value(),
+                    });
+
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("HX-Trigger", "ReloadNavbar")
+                        .body(Json(message).into_response().into_body())
+                        .unwrap();
+
+                    (newjar, response).into_response()
+                }
+                Err(e) => {
+                    let message = Error {
+                        error: format!("Error mutating session: {:?}", e),
+                    };
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+                }
+            }
+        }
+    }
+}
+
+async fn mutate_session(
+    cookiejar: Option<CookieJar>,
+    state: Arc<AppState>,
+) -> Result<CookieJar, Error> {
+    let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
+    let max_age = std::env::var("SESSION_MAX_AGE")
+        .expect("SESSION_MAX_AGE must be set")
+        .parse::<i64>()
+        .expect("SESSION_MAX_AGE must be an integer");
+
+    match cookiejar {
+        None => Err(Error {
+            error: "CookieJar not found".to_string(),
+        }),
+        Some(cookiejar) => match cookiejar.get("session_id") {
+            None => Err(Error {
+                error: "Session ID not found in CookieJar".to_string(),
+            }),
+            Some(session_id) => {
+                let old_session = state.cache.get_session(session_id.value()).await.unwrap();
+
+                if old_session.clone().unwrap().email == admin_email {
+                    return Ok(cookiejar);
+                }
+
+                let age_left = old_session.clone().unwrap().expires - (Utc::now().timestamp());
+                if age_left * 2 > max_age {
+                    println!("Session still has much time: {} seconds left.", age_left);
+                    return Ok(cookiejar);
+                }
+
+                println!(
+                    "Session expires soon in {}. Mutating the session.",
+                    age_left
+                );
+
+                match get_user_by_id(&old_session.unwrap().user_id, &state.pool).await {
+                    Ok(Some(user)) => Ok(new_session(user, state).await),
+                    Ok(None) => Err(Error {
+                        error: "User not found".to_string(),
+                    }),
+                    Err(e) => {
+                        eprintln!("Error getting user: {}", e);
+                        Err(Error {
+                            error: format!("Error getting user: {}", e),
+                        })
+                    }
+                }
+            }
+        },
+    }
+}
+
+async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
+    let session = state
+        .cache
+        .create_session(user.id.unwrap(), &user.email)
+        .await
+        .unwrap();
+
+    new_cookie(&session)
+}
+
 fn new_cookie(session: &Session) -> CookieJar {
-    let max_age = Duration::seconds(3600); // Replace with your actual session_max_age value
+    let max_age_sec = std::env::var("SESSION_MAX_AGE")
+        .expect("SESSION_MAX_AGE must be set")
+        .parse::<i64>()
+        .expect("SESSION_MAX_AGE must be an integer");
+    let max_age = Duration::seconds(max_age_sec);
+
     let expires = OffsetDateTime::now_utc() + max_age;
 
     let mut jar = CookieJar::new();
