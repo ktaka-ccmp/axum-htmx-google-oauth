@@ -1,20 +1,25 @@
-use std::sync::Arc;
-
-use aide::{
-    axum::{
-        routing::{get_with, post_with},
-        ApiRouter, IntoApiResponse,
-    },
-    NoApi,
+use aide::axum::{
+    routing::{get_with, post_with},
+    ApiRouter, IntoApiResponse,
 };
 use askama_axum::Template;
-use axum::{extract::State, http::HeaderMap, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::State,
+    http::HeaderMap,
+    http::StatusCode,
+    response::{Html, IntoResponse},
+    Json,
+};
+
 use axum_extra::extract::cookie::CookieJar;
-use chrono::Utc;
 use cookie::{
     time::{Duration, OffsetDateTime},
     Cookie, SameSite,
 };
+
+use chrono::Utc;
+use rand::{thread_rng, Rng};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use hyper::{header, Response};
@@ -24,9 +29,10 @@ use sqlx::Pool;
 
 use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
-use crate::models::{Error, IdInfo, Session, User, XCsrfToken, XUserToken};
+use crate::models::{Error, IdInfo, Session, User};
 use crate::user::{create_user, get_user_by_id, get_user_by_sub};
 use crate::{AppState, DB};
+// use std::env;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
@@ -36,6 +42,7 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
             "/refresh_token",
             get_with(refresh_token, |op| op.tag("auth")),
         )
+        .api_route("/auth_navbar", get_with(auth_navbar, |op| op.tag("auth")))
         .with_state(state)
 }
 
@@ -44,24 +51,18 @@ struct FormData {
     credential: Option<String>,
 }
 
-async fn login(State(state): State<Arc<AppState>>, body: Bytes) -> impl IntoApiResponse {
+async fn login(
+    State(state): State<Arc<AppState>>,
+    header: HeaderMap,
+    body: Bytes,
+) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
     // println!("form_data: {:?}", form_data);
     let jwt = form_data.credential.unwrap();
     println!("jwt: {:?}", jwt);
 
     if let Ok(idinfo) = verify_token(jwt).await {
-        // match header::HeaderValue
-        //     Some(expected_nonce) => {
-        //         if idinfo.nonce == expected_nonce.to_str().unwrap() {
-        //             (StatusCode::OK, "OK".to_string()).into_response()
-        //         } else {
-        //             (StatusCode::BAD_REQUEST, "Invalid nonce".to_string()).into_response()
-        //         }
-        //     }
-        //     None => (StatusCode::BAD_REQUEST, "Invalid nonce".to_string()).into_response(),
-        // }
-
+        let _ = verify_nonce(&header, &idinfo);
         println!("idinfo: {:?}", idinfo);
 
         match get_or_create_user(&idinfo, state.pool.clone()).await {
@@ -220,6 +221,219 @@ async fn refresh_token(
     }
 }
 
+#[allow(non_snake_case)]
+#[derive(Template)]
+#[template(path = "auth_navbar.login.j2")]
+struct NavbarLoginTemplate {
+    client_id: String,
+    login_url: String,
+    icon_url: String,
+    refresh_token_url: String,
+    mutate_user_url: String,
+    userToken: String,
+    nonce: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Template)]
+#[template(path = "auth_navbar.logout.j2")]
+struct NavbarLogoutTemplate {
+    logout_url: String,
+    icon_url: String,
+    refresh_token_url: String,
+    mutate_user_url: String,
+    name: String,
+    picture: String,
+    userToken: String,
+}
+
+async fn auth_navbar(
+    State(state): State<Arc<AppState>>,
+    // header: HeaderMap,
+    cookiejar: Option<CookieJar>,
+) -> impl IntoApiResponse {
+    // For unauthenticated users, return the menu.login component.
+    // fn auth_navbar_login() -> Html<String> {
+    fn auth_navbar_login() -> impl IntoApiResponse {
+        let client_id =
+            std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
+
+        let login_url = "/auth/login".to_string();
+        let icon_url = "/assets/icon.png".to_string();
+        let refresh_token_url = "/auth/refresh_token".to_string();
+        let mutate_user_url = "/auth/mutate_user".to_string();
+
+        let nonce = thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect::<String>();
+
+        let hashed_nonce = hash_nonce(nonce.as_str());
+
+        let mut jar = CookieJar::new();
+        let max_age = Duration::days(1);
+
+        let cookie = Cookie::build(("expected_nonce", hashed_nonce))
+            .path("/")
+            .secure(true)
+            .http_only(true)
+            .same_site(SameSite::Strict)
+            .max_age(max_age)
+            .expires(OffsetDateTime::now_utc() + max_age)
+            .build();
+
+        jar = jar.add(cookie);
+
+        let template = NavbarLoginTemplate {
+            client_id,
+            login_url,
+            icon_url,
+            refresh_token_url,
+            mutate_user_url,
+            userToken: "anonymous".to_string(),
+            nonce,
+        };
+        let response = Html(template.render().unwrap());
+        (jar, response).into_response()
+    }
+
+    fn auth_navbar_logout(user: User) -> Html<String> {
+        let logout_url = "/auth/logout".to_string();
+        let icon_url = "/assets/logout.png".to_string();
+        let refresh_token_url = "/auth/refresh_token".to_string();
+        let mutate_user_url = "/auth/mutate_user".to_string();
+        let picture_url = match user.picture {
+            Some(picture) => picture,
+            None => "/assets/default_icon.png".to_string(),
+        };
+
+        let template = NavbarLogoutTemplate {
+            logout_url,
+            icon_url,
+            refresh_token_url,
+            mutate_user_url,
+            name: user.name.to_string(),
+            picture: picture_url,
+            userToken: hash_email(&user.email).to_string(),
+        };
+        Html(template.render().unwrap())
+    }
+
+    let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
+        Ok(session) => session,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error getting session: {:?}", e),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    match get_user_by_id(&session.user_id, &state.pool).await {
+        Ok(Some(user)) => {
+            let response = auth_navbar_logout(user);
+            (cookiejar, response).into_response()
+        }
+        Ok(None) => {
+            let response = auth_navbar_login();
+            (cookiejar, response).into_response()
+        }
+        Err(err) => {
+            let message = Error {
+                error: format!("Error getting user: {:?}", err),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+        }
+    }
+}
+
+// async fn check(
+//     State(state): State<Arc<AppState>>,
+//     header: HeaderMap,
+//     cookiejar: Option<CookieJar>,
+// ) -> impl IntoApiResponse {
+
+//     let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
+//         Ok(session) => session,
+//         Err(e) => {
+//             let message = Error {
+//                 error: format!("Error getting session: {:?}", e),
+//             };
+//             return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+//         }
+//     };
+
+//     if session.email.is_empty() {
+//         let response = Response::builder()
+//             .status(StatusCode::NO_CONTENT)
+//             .body(Bytes::new())
+//             .unwrap();
+//         return response;
+//     }
+
+//     let response = Response::builder()
+//         .status(StatusCode::NO_CONTENT)
+//         .body(Bytes::new())
+//         .unwrap();
+//     response
+// }
+
+// @router.get("/check")
+// async def check(response: Response,
+//                 session_id: Annotated[str|None, Cookie()] = None,
+//                 hx_request: Annotated[str|None, Header()] = None,
+//                 ds: Session = Depends(get_db), cs: CacheStore = Depends(get_cache_store)):
+
+
+//     user = await get_current_user(session_id=session_id, cs=cs, ds=ds)
+
+//     if not user:
+//         response = JSONResponse({"message": "user logged out"})
+//         response.headers["HX-Trigger"] = "ReloadNavbar, LogoutSecretContent"
+//         return response
+
+//     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+// @router.get("/mutate_user")
+// async def mutate_user(
+//                   hx_request: Annotated[str | None, Header()] = None,
+//                   x_user_token: Annotated[str | None, Header()] = None,
+//                   ):
+
+//     if not hx_request:
+//         raise HTTPException(
+//             status_code=status.HTTP_400_BAD_REQUEST,
+//             detail="Only HX request is allowed to this end point.")
+
+//     response = JSONResponse({"User mutated, new user": x_user_token})
+//     response.headers["HX-Trigger"] = "ReloadNavbar, LogoutSecretContent"
+//     return response
+
+// @router.get("/logout_content")
+// async def logout_content(request: Request,
+//                          hx_request: Annotated[str|None, Header()] = None):
+//     if not hx_request:
+//         raise HTTPException(
+//             status_code=status.HTTP_400_BAD_REQUEST,
+//             detail="Only HX request is allowed to this end point."
+//             )
+
+//     context = {"request": request, "message": "User logged out"}
+//     return templates.TemplateResponse("content.error.j2", context)
+
+// @router.get("/cleanup_sessions")
+// async def cleanup_sessions(
+//                          background_tasks: BackgroundTasks,
+//                          session_id: Annotated[str|None, Cookie()] = None,
+//                          cs: CacheStore = Depends(get_cache_store)):
+//     if not session_id:
+//         return {"message": "Session CleanUp not triggered. Please login first."}
+
+//     background_tasks.add_task(cs.cleanup_sessions)
+//     return {"message": "Session CleanUp triggered."}
+
+
 async fn jar_to_session(
     cookiejar: Option<CookieJar>,
     state: Arc<AppState>,
@@ -354,6 +568,24 @@ fn hash_email(email: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+fn hash_nonce(nonce: &str) -> String {
+    let secret_salt = std::env::var("NONCE_SALT").expect("NONCE_SALT must be set in .env");
+    let mut hasher = Sha256::new();
+    hasher.update(nonce.as_bytes());
+    hasher.update(secret_salt.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+#[derive(Debug, Deserialize)]
+struct XCsrfToken {
+    pub x_csrf_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct XUserToken {
+    pub x_user_token: String,
+}
+
 async fn csrf_verify(t: XCsrfToken, session: Session) -> Result<XCsrfToken, Error> {
     if t.x_csrf_token == session.csrf_token {
         println!("CSRF Token: {} matched.", t.x_csrf_token);
@@ -421,4 +653,24 @@ async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
     };
     println!("idinfo: {:?}", idinfo);
     Ok(idinfo)
+}
+
+fn verify_nonce(header: &HeaderMap, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
+    let idinfo_nonce = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
+
+    if let Some(expected_nonce) = header.get("expected_nonce") {
+        if expected_nonce.to_str().unwrap() != idinfo_nonce {
+            let message = Error {
+                error: "Invalid nonce".to_string(),
+            };
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
+        }
+    } else {
+        let message = Error {
+            error: "expected_nonce not found".to_string(),
+        };
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
+    }
+
+    Ok(())
 }
