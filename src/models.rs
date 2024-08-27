@@ -66,3 +66,13 @@ pub struct Session {
     pub email: String,
     pub expires: i64,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, JsonSchema)]
+pub struct XCsrfToken {
+    pub x_csrf_token: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, JsonSchema)]
+pub struct XUserToken {
+    pub x_user_token: String,
+}

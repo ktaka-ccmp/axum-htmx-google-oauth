@@ -11,6 +11,7 @@ use askama_axum::Template;
 use axum::{
     extract::State,
     http::StatusCode,
+    http::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse},
     Json,
 };
@@ -27,10 +28,10 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::Pool;
 
-use crate::idtoken::verify_idtoken;
 use crate::idtoken::TokenVerificationError;
-use crate::models::{Error, IdInfo, Session, User};
+use crate::models::{Error, IdInfo, Session, User, XCsrfToken, XUserToken};
 use crate::user::{create_user, get_user_by_id, get_user_by_sub};
+use crate::{idtoken::verify_idtoken, user};
 use crate::{AppState, DB};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -192,8 +193,48 @@ async fn logout(
 
 async fn refresh_token(
     State(state): State<Arc<AppState>>,
-    cookiejar: Option<CookieJar>,
+    header: HeaderMap,
+    mut cookiejar: Option<CookieJar>,
 ) -> impl IntoApiResponse {
+
+    let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
+        Ok(session) => session,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error getting session: {:?}", e),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let x_csrf_token = match header.get("x-csrf-token") {
+        Some(t) => XCsrfToken {
+            x_csrf_token: t.to_str().unwrap().to_string(),
+        },
+        None => {
+            let message = Error {
+                error: "Error: CSRF token not found".to_string(),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let _ = csrf_verify(x_csrf_token, session.clone()).await;
+
+    let x_user_token = match header.get("x-user-token") {
+        Some(t) => XUserToken {
+            x_user_token: t.to_str().unwrap().to_string(),
+        },
+        None => {
+            let message = Error {
+                error: "Error: User token not found".to_string(),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let _ = user_verify(x_user_token, session.clone()).await;
+
     match cookiejar {
         None => {
             let message = Error {
@@ -201,8 +242,8 @@ async fn refresh_token(
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
         }
-        Some(cookiejar) => {
-            let newjar = mutate_session(Some(cookiejar), state).await;
+        Some(ref mut cookiejar) => {
+            let newjar = mutate_session(Some(cookiejar.clone()), state).await;
             match newjar {
                 Ok(newjar) => {
                     let message = serde_json::json!({
@@ -219,7 +260,7 @@ async fn refresh_token(
                         .body(Json(message).into_response().into_body())
                         .unwrap();
 
-                    (newjar, response).into_response()
+                    (cookiejar.clone(), response).into_response()
                 }
                 Err(e) => {
                     let message = Error {
@@ -229,6 +270,106 @@ async fn refresh_token(
                 }
             }
         }
+    }
+}
+
+async fn refresh_token_1(
+    State(state): State<Arc<AppState>>,
+    NoApi(x_csrf_token): NoApi<Option<XCsrfToken>>,
+    NoApi(x_user_token): NoApi<Option<XUserToken>>,
+    // x_user_token: Option<XUserToken>,
+    mut cookiejar: Option<CookieJar>,
+) -> impl IntoApiResponse {
+
+    let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
+        Ok(session) => session,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error getting session: {:?}", e),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let x_csrf_token = match x_csrf_token {
+        Some(t) => t,
+        None => {
+            let message = Error {
+                error: "Error: CSRF token not found".to_string(),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let _ = csrf_verify(x_csrf_token, session.clone()).await;
+
+    let x_user_token = match x_user_token {
+        Some(t) => t,
+        None => {
+            let message = Error {
+                error: "Error: User token not found".to_string(),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let _ = user_verify(x_user_token, session.clone()).await;
+
+    match cookiejar {
+        None => {
+            let message = Error {
+                error: "Error: CookieJar not found".to_string(),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+        }
+        Some(ref mut cookiejar) => {
+            let newjar = mutate_session(Some(cookiejar.clone()), state).await;
+            match newjar {
+                Ok(newjar) => {
+                    let message = serde_json::json!({
+                        "ok": true,
+                        "session_id": newjar.get("session_id").unwrap().value(),
+                        "csrf_token": newjar.get("csrf_token").unwrap().value(),
+                        "user_token": newjar.get("user_token").unwrap().value(),
+                    });
+
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("HX-Trigger", "ReloadNavbar")
+                        .body(Json(message).into_response().into_body())
+                        .unwrap();
+
+                    (cookiejar.clone(), response).into_response()
+                }
+                Err(e) => {
+                    let message = Error {
+                        error: format!("Error mutating session: {:?}", e),
+                    };
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+                }
+            }
+        }
+    }
+}
+
+async fn jar_to_session(
+    cookiejar: Option<CookieJar>,
+    state: Arc<AppState>,
+) -> Result<Session, Error> {
+    match cookiejar {
+        None => Err(Error {
+            error: "CookieJar not found".to_string(),
+        }),
+        Some(cookiejar) => match cookiejar.get("session_id") {
+            None => Err(Error {
+                error: "Session ID not found in CookieJar".to_string(),
+            }),
+            Some(session_id) => {
+                let session = state.cache.get_session(session_id.value()).await.unwrap();
+                Ok(session.unwrap())
+            }
+        },
     }
 }
 
@@ -346,25 +487,25 @@ fn hash_email(email: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+async fn csrf_verify(t: XCsrfToken, session: Session) -> Result<XCsrfToken, Error> {
+    if t.x_csrf_token == session.csrf_token {
+        Ok(t)
+    } else {
+        Err(Error {
+            error: format!("X-CSRF-TOKEN: {} did not match the csrf_token in the record: {}.", t.x_csrf_token, session.csrf_token),
+        })
+    }
+}
 
-
-// def csrf_verify(csrf_token: str, session: dict):
-//     print("### Debug: csrf_verify: ", csrf_token)
-//     if hmac.compare_digest(csrf_token, session['csrf_token']):
-//     # if csrf_token == session['csrf_token']:
-//         return csrf_token
-//     else:
-//         raise HTTPException(status_code=403, detail="CSRF token: "+csrf_token+" did not match the record.")
-
-// def user_verify(user_token: str, session: dict):
-//     print("### Debug: user_verify: ", user_token)
-//     if hmac.compare_digest(user_token, hash_email(session['email'])):
-//     # if user_token == hash_email(session["email"]):
-//         return user_token
-//     else:
-//         raise HTTPException(status_code=403, detail="USER token: "+user_token+" did not match the record.")
-
-
+async fn user_verify(t: XUserToken, session: Session) -> Result<XUserToken, Error> {
+    if t.x_user_token == hash_email(&session.email) {
+        Ok(t)
+    } else {
+        Err(Error {
+            error: format!("X-USER-TOKEN: {} did not match the hash of email in the record: {}.", t.x_user_token, hash_email(&session.email)),
+        })
+    }
+}
 
 
 async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
