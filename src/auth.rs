@@ -11,8 +11,8 @@ use askama_axum::Template;
 use axum::{
     extract::State,
     http::StatusCode,
-    http::{HeaderMap, HeaderValue},
-    response::{Html, IntoResponse},
+    http::HeaderMap,
+    response::IntoResponse,
     Json,
 };
 use axum_extra::extract::cookie::CookieJar;
@@ -31,7 +31,7 @@ use sqlx::Pool;
 use crate::idtoken::TokenVerificationError;
 use crate::models::{Error, IdInfo, Session, User, XCsrfToken, XUserToken};
 use crate::user::{create_user, get_user_by_id, get_user_by_sub};
-use crate::{idtoken::verify_idtoken, user};
+use crate::idtoken::verify_idtoken;
 use crate::{AppState, DB};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -213,7 +213,7 @@ async fn refresh_token(
         },
         None => {
             let message = Error {
-                error: "Error: CSRF token not found".to_string(),
+                error: "X-CSRF-TOKEN not set in the Header".to_string(),
             };
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
         }
@@ -227,87 +227,7 @@ async fn refresh_token(
         },
         None => {
             let message = Error {
-                error: "Error: User token not found".to_string(),
-            };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
-        }
-    };
-
-    let _ = user_verify(x_user_token, session.clone()).await;
-
-    match cookiejar {
-        None => {
-            let message = Error {
-                error: "Error: CookieJar not found".to_string(),
-            };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
-        }
-        Some(ref mut cookiejar) => {
-            let newjar = mutate_session(Some(cookiejar.clone()), state).await;
-            match newjar {
-                Ok(newjar) => {
-                    let message = serde_json::json!({
-                        "ok": true,
-                        "session_id": newjar.get("session_id").unwrap().value(),
-                        "csrf_token": newjar.get("csrf_token").unwrap().value(),
-                        "user_token": newjar.get("user_token").unwrap().value(),
-                    });
-
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .header("HX-Trigger", "ReloadNavbar")
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
-
-                    (cookiejar.clone(), response).into_response()
-                }
-                Err(e) => {
-                    let message = Error {
-                        error: format!("Error mutating session: {:?}", e),
-                    };
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
-                }
-            }
-        }
-    }
-}
-
-async fn refresh_token_1(
-    State(state): State<Arc<AppState>>,
-    NoApi(x_csrf_token): NoApi<Option<XCsrfToken>>,
-    NoApi(x_user_token): NoApi<Option<XUserToken>>,
-    // x_user_token: Option<XUserToken>,
-    mut cookiejar: Option<CookieJar>,
-) -> impl IntoApiResponse {
-
-    let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
-        Ok(session) => session,
-        Err(e) => {
-            let message = Error {
-                error: format!("Error getting session: {:?}", e),
-            };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
-        }
-    };
-
-    let x_csrf_token = match x_csrf_token {
-        Some(t) => t,
-        None => {
-            let message = Error {
-                error: "Error: CSRF token not found".to_string(),
-            };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
-        }
-    };
-
-    let _ = csrf_verify(x_csrf_token, session.clone()).await;
-
-    let x_user_token = match x_user_token {
-        Some(t) => t,
-        None => {
-            let message = Error {
-                error: "Error: User token not found".to_string(),
+                error: "X-USER-TOKEN not set in the Header".to_string(),
             };
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
         }
@@ -489,6 +409,7 @@ fn hash_email(email: &str) -> String {
 
 async fn csrf_verify(t: XCsrfToken, session: Session) -> Result<XCsrfToken, Error> {
     if t.x_csrf_token == session.csrf_token {
+        println!("CSRF Token: {} matched.", t.x_csrf_token);
         Ok(t)
     } else {
         Err(Error {
@@ -499,6 +420,7 @@ async fn csrf_verify(t: XCsrfToken, session: Session) -> Result<XCsrfToken, Erro
 
 async fn user_verify(t: XUserToken, session: Session) -> Result<XUserToken, Error> {
     if t.x_user_token == hash_email(&session.email) {
+        println!("User Token: {} matched for {}.", t.x_user_token, session.email);
         Ok(t)
     } else {
         Err(Error {
@@ -506,7 +428,6 @@ async fn user_verify(t: XUserToken, session: Session) -> Result<XUserToken, Erro
         })
     }
 }
-
 
 async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
     match get_user_by_sub(&idinfo.sub, &pool).await {
