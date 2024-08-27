@@ -57,6 +57,48 @@ pub async fn check_auth(
     next.run(req).await.into_response()
 }
 
+pub async fn is_authenticated_admin(
+    State(state): State<Arc<AppState>>,
+    cookiejar: Option<CookieJar>,
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> impl IntoApiResponse {
+    let error_response = serde_json::json!({
+        "message": "Authoriztion required.",
+    });
+
+    if let Some(cookiejar) = cookiejar {
+        if let Some(session_id) = cookiejar.get("session_id") {
+            println!("Session ID: {:?}", session_id.value());
+            let user = get_current_user(session_id.value(), State(state)).await;
+            if let Some(user) = user {
+                if user.enabled.unwrap() {
+                    let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
+                    if user.email == admin_email {
+                        println!("Authenticated as admin: {}", user.email);
+                        next.run(req).await.into_response()
+                    } else {
+                        println!("Not an admin user.");
+                        (StatusCode::FORBIDDEN, Json(error_response)).into_response()
+                    }
+                } else {
+                    println!("Disabled user.");
+                    (StatusCode::FORBIDDEN, Json(error_response)).into_response()
+                }
+            } else {
+                println!("NotAuthenticated");
+                (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+            }
+        } else {
+            println!("Session ID not found in cookie.");
+            (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+        }
+    } else {
+        println!("Cookie not found.");
+        (StatusCode::UNAUTHORIZED, Json(error_response)).into_response()
+    }
+}
+
 pub async fn is_authenticated(
     State(state): State<Arc<AppState>>,
     cookiejar: Option<CookieJar>,
