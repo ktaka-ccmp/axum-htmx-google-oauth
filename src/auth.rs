@@ -43,6 +43,12 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
             get_with(refresh_token, |op| op.tag("auth")),
         )
         .api_route("/auth_navbar", get_with(auth_navbar, |op| op.tag("auth")))
+        .api_route("/check", get_with(check, |op| op.tag("auth")))
+        .api_route("/mutate_user", get_with(mutate_user, |op| op.tag("auth")))
+        .api_route(
+            "/logout_content",
+            get_with(logout_content, |op| op.tag("auth")),
+        )
         .with_state(state)
 }
 
@@ -249,7 +255,6 @@ struct NavbarLogoutTemplate {
 
 async fn auth_navbar(
     State(state): State<Arc<AppState>>,
-    // header: HeaderMap,
     cookiejar: Option<CookieJar>,
 ) -> impl IntoApiResponse {
     // For unauthenticated users, return the menu.login component.
@@ -259,7 +264,7 @@ async fn auth_navbar(
             std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
 
         let login_url = "/auth/login".to_string();
-        let icon_url = "/assets/icon.png".to_string();
+        let icon_url = "/asset/icon.png".to_string();
         let refresh_token_url = "/auth/refresh_token".to_string();
         let mutate_user_url = "/auth/mutate_user".to_string();
 
@@ -298,14 +303,16 @@ async fn auth_navbar(
         (jar, response).into_response()
     }
 
-    fn auth_navbar_logout(user: User) -> Html<String> {
+    // For authenticated users, return the menu.logout component.
+    // fn auth_navbar_logout(user: User) -> Html<String> {
+    fn auth_navbar_logout(user: User) -> impl IntoApiResponse {
         let logout_url = "/auth/logout".to_string();
-        let icon_url = "/assets/logout.png".to_string();
+        let icon_url = "/asset/logout.png".to_string();
         let refresh_token_url = "/auth/refresh_token".to_string();
         let mutate_user_url = "/auth/mutate_user".to_string();
         let picture_url = match user.picture {
             Some(picture) => picture,
-            None => "/assets/default_icon.png".to_string(),
+            None => "/asset/default_icon.png".to_string(),
         };
 
         let template = NavbarLogoutTemplate {
@@ -320,107 +327,78 @@ async fn auth_navbar(
         Html(template.render().unwrap())
     }
 
-    let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
-        Ok(session) => session,
-        Err(e) => {
-            let message = Error {
-                error: format!("Error getting session: {:?}", e),
-            };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
-        }
-    };
-
-    match get_user_by_id(&session.user_id, &state.pool).await {
-        Ok(Some(user)) => {
+    match get_current_user_from_jar(cookiejar.clone(), state).await {
+        Some(user) => {
             let response = auth_navbar_logout(user);
             (cookiejar, response).into_response()
         }
-        Ok(None) => {
+        None => {
             let response = auth_navbar_login();
             (cookiejar, response).into_response()
         }
-        Err(err) => {
+    }
+}
+
+async fn check(
+    State(state): State<Arc<AppState>>,
+    cookiejar: Option<CookieJar>,
+) -> impl IntoApiResponse {
+    match jar_to_session(cookiejar, state).await {
+        Ok(_s) => (StatusCode::NO_CONTENT, "").into_response(),
+        Err(e) => {
             let message = Error {
-                error: format!("Error getting user: {:?}", err),
+                error: format!("user logged out: {:?}", e),
+            };
+
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("HX-Trigger", "ReloadNavbar, LogoutSecretContent")
+                .body(Json(message).into_response().into_body())
+                .unwrap();
+
+            response.into_response()
+        }
+    }
+}
+
+async fn mutate_user(header: HeaderMap) -> impl IntoApiResponse {
+    match header.get("x-user-token") {
+        Some(x_user_token) => {
+            let message = serde_json::json!({
+                "message": "User mutated",
+                "new_user": x_user_token.to_str().unwrap(),
+            });
+
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("HX-Trigger", "ReloadNavbar, LogoutSecretContent")
+                .body(Json(message).into_response().into_body())
+                .unwrap();
+            response.into_response()
+        }
+        None => {
+            let message = Error {
+                error: "X-USER-TOKEN not found in the Header".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
         }
     }
 }
 
-// async fn check(
-//     State(state): State<Arc<AppState>>,
-//     header: HeaderMap,
-//     cookiejar: Option<CookieJar>,
-// ) -> impl IntoApiResponse {
+#[derive(Template)]
+#[template(path = "content.error.j2")]
+struct ContentErrorTemplate {
+    message: String,
+}
 
-//     let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
-//         Ok(session) => session,
-//         Err(e) => {
-//             let message = Error {
-//                 error: format!("Error getting session: {:?}", e),
-//             };
-//             return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
-//         }
-//     };
-
-//     if session.email.is_empty() {
-//         let response = Response::builder()
-//             .status(StatusCode::NO_CONTENT)
-//             .body(Bytes::new())
-//             .unwrap();
-//         return response;
-//     }
-
-//     let response = Response::builder()
-//         .status(StatusCode::NO_CONTENT)
-//         .body(Bytes::new())
-//         .unwrap();
-//     response
-// }
-
-// @router.get("/check")
-// async def check(response: Response,
-//                 session_id: Annotated[str|None, Cookie()] = None,
-//                 hx_request: Annotated[str|None, Header()] = None,
-//                 ds: Session = Depends(get_db), cs: CacheStore = Depends(get_cache_store)):
-
-
-//     user = await get_current_user(session_id=session_id, cs=cs, ds=ds)
-
-//     if not user:
-//         response = JSONResponse({"message": "user logged out"})
-//         response.headers["HX-Trigger"] = "ReloadNavbar, LogoutSecretContent"
-//         return response
-
-//     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-// @router.get("/mutate_user")
-// async def mutate_user(
-//                   hx_request: Annotated[str | None, Header()] = None,
-//                   x_user_token: Annotated[str | None, Header()] = None,
-//                   ):
-
-//     if not hx_request:
-//         raise HTTPException(
-//             status_code=status.HTTP_400_BAD_REQUEST,
-//             detail="Only HX request is allowed to this end point.")
-
-//     response = JSONResponse({"User mutated, new user": x_user_token})
-//     response.headers["HX-Trigger"] = "ReloadNavbar, LogoutSecretContent"
-//     return response
-
-// @router.get("/logout_content")
-// async def logout_content(request: Request,
-//                          hx_request: Annotated[str|None, Header()] = None):
-//     if not hx_request:
-//         raise HTTPException(
-//             status_code=status.HTTP_400_BAD_REQUEST,
-//             detail="Only HX request is allowed to this end point."
-//             )
-
-//     context = {"request": request, "message": "User logged out"}
-//     return templates.TemplateResponse("content.error.j2", context)
+async fn logout_content() -> impl IntoApiResponse {
+    let template = ContentErrorTemplate {
+        message: "User logged out".to_string(),
+    };
+    Html(template.render().unwrap())
+}
 
 // @router.get("/cleanup_sessions")
 // async def cleanup_sessions(
@@ -433,6 +411,23 @@ async fn auth_navbar(
 //     background_tasks.add_task(cs.cleanup_sessions)
 //     return {"message": "Session CleanUp triggered."}
 
+async fn get_current_user_from_jar(
+    cookiejar: Option<CookieJar>,
+    state: Arc<AppState>,
+) -> Option<User> {
+    let state_clone = state.clone();
+    let session_result = jar_to_session(cookiejar, state_clone).await;
+    match session_result {
+        Ok(session) => {
+            let user_result = get_user_by_id(&session.user_id, &state.pool).await;
+            match user_result {
+                Ok(user) => user,
+                Err(_) => None,
+            }
+        }
+        Err(_) => None,
+    }
+}
 
 async fn jar_to_session(
     cookiejar: Option<CookieJar>,
