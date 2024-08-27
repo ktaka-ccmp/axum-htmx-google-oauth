@@ -4,20 +4,29 @@ use aide::{
     scalar::Scalar,
 };
 
+use axum::middleware::from_fn_with_state;
 use axum::{response::Redirect, Extension, Json};
 
 use dotenv::dotenv;
-use sqlx::sqlite::SqlitePool as Pool;
-use std::net::SocketAddr;
+use sqlx::Pool;
+use std::{net::SocketAddr, sync::Arc};
 
 use tower_http::trace::TraceLayer;
 
 use api_server_htmx::api;
 use api_server_htmx::api2;
 use api_server_htmx::asset;
+use api_server_htmx::auth;
+use api_server_htmx::cachestore;
+use api_server_htmx::debug;
 use api_server_htmx::htmx;
 use api_server_htmx::htmx_secret;
 use api_server_htmx::spa;
+use api_server_htmx::user;
+
+use api_server_htmx::AppState;
+
+use api_server_htmx::middleware::is_authenticated;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,26 +35,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     dotenv().ok();
-    let db_connection_str = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let db_connection_str = std::env::var("DATABASE_URL")
+        .expect("Check your .env file.\nDATABASE_URL environment variable must be set.");
     let pool = Pool::connect(&db_connection_str).await?;
+    let cache: Arc<dyn cachestore::CacheStore + Send + Sync> =
+        cachestore::get_cache_store().await?;
+
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        cache,
+    });
 
     let docs_router = ApiRouter::new()
         .route("/", Scalar::new("/docs/api.json").axum_route())
         .route("/api.json", get(serve_api));
 
     let app = ApiRouter::new()
-        .api_route("/", get(|| async { Redirect::permanent("/spa") }))
-        .api_route("/docs/", get(|| async { Redirect::permanent("/docs") }))
-        .api_route("/spa/", get(|| async { Redirect::permanent("/spa") }))
-        .api_route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))
+        .route("/", get(|| async { Redirect::permanent("/spa") }))
+        .route("/docs/", get(|| async { Redirect::permanent("/docs") }))
+        .route("/spa/", get(|| async { Redirect::permanent("/spa") }))
+        .route("/htmx/", get(|| async { Redirect::permanent("/htmx") }))
+        .route("/auth/", get(|| async { Redirect::permanent("/auth") }))
         .nest("/docs", docs_router)
         .nest("/api", api::create_router(pool.clone()))
         .nest("/api2", api2::create_router(pool.clone()))
         .nest("/spa", spa::create_router())
         .nest("/htmx", htmx::create_router(pool.clone()))
-        .nest("/htmx", htmx_secret::create_router())
+        .nest(
+            "/htmx",
+            htmx_secret::create_router(state.clone())
+                .route_layer(from_fn_with_state(state.clone(), is_authenticated)),
+        )
         .nest("/asset", asset::create_router())
-        // .nest_service("/img", image::create_router())
+        .nest("/auth", auth::create_router(state.clone()))
+        .nest("/crud", user::create_router(pool.clone()))
+        .nest("/debug", debug::create_router(state.clone()))
         .layer(TraceLayer::new_for_http())
         .with_state(());
 

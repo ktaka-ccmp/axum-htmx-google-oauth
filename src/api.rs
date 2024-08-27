@@ -5,15 +5,16 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use tracing::error;
+
+use crate::DB;
 
 use crate::models::{Customer, CustomerId, Error, Params};
 
-// Fixed duplicate function definition by removing the second, incomplete definition
 async fn customers(
     Query(params): Query<Params>,
-    State(pool): State<SqlitePool>,
+    State(pool): State<Pool<DB>>,
 ) -> impl IntoApiResponse {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(10); // Adjusted default limit from 1 to 10
@@ -38,7 +39,7 @@ async fn customers(
 
 async fn customer(
     Path(cid): Path<CustomerId>,
-    State(pool): State<SqlitePool>,
+    State(pool): State<Pool<DB>>,
 ) -> impl IntoApiResponse {
     let customer_result = sqlx::query_as::<_, Customer>("SELECT * FROM customer WHERE id = ?")
         .bind(cid.id)
@@ -66,7 +67,7 @@ async fn customer(
     }
 }
 
-pub fn create_router(pool: SqlitePool) -> ApiRouter {
+pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/customers", get_with(customers, |op| op.tag("api")))
         .api_route("/customer/:id", get_with(customer, |op| op.tag("api")))

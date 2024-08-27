@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{% include "head.j2" %}
+
+<body>
+    {# Header #}
+    <header>
+        {# <div id="auth_navbar" hx-get="/auth/auth_navbar" hx-target="#auth_navbar" hx-swap="innerHTML"
+            hx-trigger="load, ReloadNavbar from:body">
+        </div> #}
+    </header>
+
+    {# Content #}
+    <div>
+        <p>
+            {% include "auth_navbar.login.html.j2" %}
+            {# {% include "auth_navbar.login.js.j2" %} #}
+        </p>
+    </div>
+
+</body>
+
+{% include "auth_navbar.login.callback.j2" %}
+
+</html>

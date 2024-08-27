@@ -4,10 +4,12 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse},
 };
+use std::sync::Arc;
 
 use crate::middleware::check_hx_request;
+use crate::AppState;
 
-pub fn create_router() -> ApiRouter {
+pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route(
             "/content.secret1",
@@ -16,9 +18,17 @@ pub fn create_router() -> ApiRouter {
         .api_route(
             "/content.secret2",
             get_with(content_secret2, |op| op.tag("htmx_secret")),
+            // .layer(axum::middleware::from_fn(check_auth)),
         )
         .route_layer(axum::middleware::from_fn(check_hx_request))
-    // .fallback(page_not_found)
+        // .route_layer(axum::middleware::from_fn_with_state(
+        //     state.clone(),
+        //     is_authenticated,
+        // ))
+        // .route_layer(axum::middleware::from_fn_with_state(state.clone(),check_auth))
+        // .route_layer(axum::middleware::from_fn(check_auth))
+        // .fallback(page_not_found)
+        .with_state(state)
 }
 
 #[derive(Template)]

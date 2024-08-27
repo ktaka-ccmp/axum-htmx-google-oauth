@@ -5,15 +5,15 @@ use axum::{
     http::{StatusCode, Uri},
     response::{Html, IntoResponse},
 };
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use tracing::error;
 
-use crate::models::{Customer, Params};
-
 use crate::middleware::check_hx_request;
+use crate::models::{Customer, Params};
+use crate::DB;
 
 /// Creates the API router with the given SQLite pool.
-pub fn create_router(pool: SqlitePool) -> ApiRouter {
+pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/content.top", get_with(content_top, |op| op.tag("htmx")))
         .api_route("/content.list", get_with(content_list, |op| op.tag("htmx")))
@@ -82,7 +82,7 @@ struct ContentListTbodyTemplate {
 /// Handles the content list table body request.
 async fn content_list_tbody(
     Query(params): Query<Params>,
-    State(pool): State<SqlitePool>,
+    State(pool): State<Pool<DB>>,
 ) -> impl IntoApiResponse {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(1);

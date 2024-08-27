@@ -1,0 +1,24 @@
+
+{# The following script should be loaded every time this component is loaded. #}
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+<div id="g_id_onload"
+     data-client_id="{{ client_id }}",
+     data-context="signin"
+     data-ux_mode="popup"
+     data-callback=onSignIn
+     data-nonce="{{ nonce }}"
+     data-close_on_tap_outside="true"
+     data-itp_support="true"
+     data-auto_prompt="false"
+     data-use_fedcm_for_prompt="true"
+     >
+</div>
+
+<div class="g_id_signin"
+     data-type="icon"
+     data-shape="square"
+     data-theme="outline"
+     data-size="large"
+     >
+</div>

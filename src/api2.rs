@@ -5,13 +5,14 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use sqlx::SqlitePool;
+use sqlx::Pool;
 
 use crate::models::{Customer, CustomerId, Error, Params};
+use crate::DB;
 
 async fn customers(
     Query(params): Query<Params>,
-    State(pool): State<SqlitePool>,
+    State(pool): State<Pool<DB>>,
 ) -> Result<Json<Vec<Customer>>, Response> {
     let skip = params.skip.unwrap_or(0);
     let limit = params.limit.unwrap_or(1);
@@ -33,7 +34,7 @@ async fn customers(
 
 async fn customer(
     Path(cid): Path<CustomerId>,
-    State(pool): State<SqlitePool>,
+    State(pool): State<Pool<DB>>,
 ) -> Result<Json<Customer>, Response> {
     let customer = sqlx::query_as::<_, Customer>("SELECT * FROM customer WHERE id = ?")
         .bind(cid.id)
@@ -53,7 +54,7 @@ async fn customer(
     }
 }
 
-pub fn create_router(pool: SqlitePool) -> ApiRouter {
+pub fn create_router(pool: Pool<DB>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/customers", get_with(customers, |op| op.tag("api")))
         .api_route("/customer/:id", get_with(customer, |op| op.tag("api")))

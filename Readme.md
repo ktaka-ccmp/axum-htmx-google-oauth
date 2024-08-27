@@ -15,6 +15,18 @@ sqlx migrate run --database-url sqlite:./sqlite.db
 #sqlx migrate run --database-url sqlite:./sqlite.db
 ```
 
+Add user table
+```text
+cd db/
+sqlx migrate add -r user
+vi migrations/20240819135742_user.down.sql
+vi migrations/20240819135742_user.up.sql
+sqlx migrate revert --database-url sqlite:./sqlite.db
+sqlx migrate run --database-url sqlite:./sqlite.db
+```
+
+`./db/create_data.sh`
+
 ### Contents of migration files
 
 xxxx_customer.up.sql
@@ -58,6 +70,16 @@ cargo add tower-http --features=trace,fs
 cargo add sqlx --features sqlite,runtime-tokio-rustls
 cargo add aide --features=axum,scalar,axum-extra-query,axum-headers
 cargo add askama_axum
+```
+
+### Prepare .env
+
+```text
+$ cat .env 
+DATABASE_URL="sqlite:./db/sqlite.db"
+ORIGIN_SERVER="http://localhost:3000"
+
+GOOGLE_OAUTH2_CLIENT_ID="xxxxxx-yyyyyy.apps.googleusercontent.com"
 ```
 
 ## run app
