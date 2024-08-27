@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aide = { version = "0.13.4", features = ["axum-extra-cookie", "axum-extra-form", "axum-extra-query", "axum-headers", "axum-multipart", "jwt-authorizer", "macros", "scalar", "serde_qs"] }
+aide = { version = "0.13.4", features = ["axum-extra-cookie", "axum-extra-cookie-private", "axum-extra-form", "axum-extra-query", "axum-headers", "axum-multipart", "jwt-authorizer", "macros", "scalar", "serde_qs"] }
 askama = { version = "0.12.1", features = ["with-axum"] }
 askama_axum = "0.4.0"
 async-trait = "0.1.81"
-axum = { version = "0.7.5", features = ["multipart"] }
-axum-extra = { version = "0.9.3", features = ["cookie"] }
+axum = { version = "0.7.5", features = ["__private_docs", "http2", "macros", "multipart"] }
+axum-extra = { version = "0.9.3", features = ["async-read-body", "cookie-key-expansion", "cookie-private", "cookie-signed", "erased-json", "form", "json-deserializer", "json-lines", "multipart", "query", "typed-header", "typed-routing"] }
 base64 = "0.22.1"
 bytes = "1.7.1"
 chrono = "0.4.38"
