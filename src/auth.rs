@@ -198,7 +198,7 @@ async fn refresh_token(
     match cookiejar {
         None => {
             let message = Error {
-                error: format!("Error: CookieJar not found"),
+                error: "Error: CookieJar not found".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
         }

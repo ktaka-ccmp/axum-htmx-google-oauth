@@ -12,7 +12,6 @@ use crate::DB;
 
 use crate::models::{Customer, CustomerId, Error, Params};
 
-// Fixed duplicate function definition by removing the second, incomplete definition
 async fn customers(
     Query(params): Query<Params>,
     State(pool): State<Pool<DB>>,

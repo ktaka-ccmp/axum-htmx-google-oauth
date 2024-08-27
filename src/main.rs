@@ -4,6 +4,7 @@ use aide::{
     scalar::Scalar,
 };
 
+use axum::middleware::from_fn_with_state;
 use axum::{response::Redirect, Extension, Json};
 
 use dotenv::dotenv;
@@ -23,6 +24,8 @@ use api_server_htmx::spa;
 use api_server_htmx::user;
 
 use api_server_htmx::AppState;
+
+use api_server_htmx::middleware::is_authenticated;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -57,7 +60,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/api2", api2::create_router(pool.clone()))
         .nest("/spa", spa::create_router())
         .nest("/htmx", htmx::create_router(pool.clone()))
-        .nest("/htmx", htmx_secret::create_router(state.clone()))
+        .nest(
+            "/htmx",
+            htmx_secret::create_router(state.clone())
+                .route_layer(from_fn_with_state(state.clone(), is_authenticated)),
+        )
         .nest("/asset", asset::create_router())
         .nest("/auth", auth::create_router(state.clone()))
         .nest("/crud", user::create_router(pool.clone()))

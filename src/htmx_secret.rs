@@ -6,7 +6,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::middleware::{check_hx_request, is_authenticated};
+use crate::middleware::check_hx_request;
 use crate::AppState;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -21,10 +21,10 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
             // .layer(axum::middleware::from_fn(check_auth)),
         )
         .route_layer(axum::middleware::from_fn(check_hx_request))
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            is_authenticated,
-        ))
+        // .route_layer(axum::middleware::from_fn_with_state(
+        //     state.clone(),
+        //     is_authenticated,
+        // ))
         // .route_layer(axum::middleware::from_fn_with_state(state.clone(),check_auth))
         // .route_layer(axum::middleware::from_fn(check_auth))
         // .fallback(page_not_found)
