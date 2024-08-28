@@ -59,7 +59,7 @@ struct FormData {
 
 async fn login(
     State(state): State<Arc<AppState>>,
-    header: HeaderMap,
+    jar: Option<CookieJar>,
     body: Bytes,
 ) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
@@ -68,7 +68,8 @@ async fn login(
     println!("jwt: {:?}", jwt);
 
     if let Ok(idinfo) = verify_token(jwt).await {
-        let _ = verify_nonce(&header, &idinfo);
+        // let _ = verify_nonce(&header, &idinfo);
+        let _ = verify_nonce(jar.clone(), &idinfo);
         // println!("idinfo: {:?}", idinfo);
 
         match get_or_create_user(&idinfo, state.pool.clone()).await {
@@ -650,28 +651,38 @@ async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
     Ok(idinfo)
 }
 
-fn verify_nonce(header: &HeaderMap, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
+fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
     let idinfo_nonce = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
 
     println!("idinfo_nonce: {:?}", idinfo_nonce);
 
-    if let Some(expected_nonce) = header.get("expected_nonce") {
+    if let Some(jar) = jar {
+        if let Some(expected_nonce) = jar.get("expected_nonce") {
 
-        println!("expected_nonce(hashed) from header: {:?}, hashed idinfo.nonce: {:?}", expected_nonce, idinfo_nonce);
-        if expected_nonce.to_str().unwrap() != idinfo_nonce {
+            println!(
+                "expected_nonce(hashed) from header: {:?}, hashed idinfo.nonce: {:?}",
+                expected_nonce.to_string(), idinfo_nonce
+            );
+            if expected_nonce.to_string() != idinfo_nonce {
+                let message = Error {
+                    error: "Invalid nonce".to_string(),
+                };
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
+            }
+        } else {
+            println!("expected_nonce(hashed) not found in header");
+
             let message = Error {
-                error: "Invalid nonce".to_string(),
+                error: "expected_nonce not found".to_string(),
             };
             return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
         }
-    } else {
-        println!("expected_nonce(hashed) not found in header");
-
-        let message = Error {
-            error: "expected_nonce not found".to_string(),
-        };
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
     }
 
-    Ok(())
+    let message = Error {
+        error: "expected_nonce not found".to_string(),
+    };
+    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
+
+    // Ok(())
 }
