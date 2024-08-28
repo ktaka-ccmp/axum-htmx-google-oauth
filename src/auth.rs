@@ -69,7 +69,7 @@ async fn login(
 
     if let Ok(idinfo) = verify_token(jwt).await {
         let _ = verify_nonce(&header, &idinfo);
-        println!("idinfo: {:?}", idinfo);
+        // println!("idinfo: {:?}", idinfo);
 
         match get_or_create_user(&idinfo, state.pool.clone()).await {
             Ok(user) => {
@@ -653,7 +653,11 @@ async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
 fn verify_nonce(header: &HeaderMap, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
     let idinfo_nonce = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
 
+    println!("idinfo_nonce: {:?}", idinfo_nonce);
+
     if let Some(expected_nonce) = header.get("expected_nonce") {
+
+        println!("expected_nonce(hashed) from header: {:?}, hashed idinfo.nonce: {:?}", expected_nonce, idinfo_nonce);
         if expected_nonce.to_str().unwrap() != idinfo_nonce {
             let message = Error {
                 error: "Invalid nonce".to_string(),
@@ -661,6 +665,8 @@ fn verify_nonce(header: &HeaderMap, idinfo: &IdInfo) -> Result<(), (StatusCode, 
             return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
         }
     } else {
+        println!("expected_nonce(hashed) not found in header");
+
         let message = Error {
             error: "expected_nonce not found".to_string(),
         };
