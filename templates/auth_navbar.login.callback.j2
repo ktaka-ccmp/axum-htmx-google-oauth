@@ -1,6 +1,8 @@
 <script>
     function onSignIn(response) {
 
+        console.log("Google Sign-In Response: ", response);
+
         // Decode the ID token
         const decodedToken = KJUR.jws.JWS.parse(response.credential);
         // Check the nonce value
