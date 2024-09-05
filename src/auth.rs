@@ -32,6 +32,7 @@ use crate::idtoken::TokenVerificationError;
 use crate::models::{Error, IdInfo, Session, User};
 use crate::user::{create_user, get_user_by_id, get_user_by_sub};
 use crate::{AppState, DB};
+// use crate::middleware::check_hx_request;
 // use std::env;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -49,6 +50,7 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
             "/logout_content",
             get_with(logout_content, |op| op.tag("auth")),
         )
+        // .route_layer(axum::middleware::from_fn(check_hx_request))
         .with_state(state)
 }
 

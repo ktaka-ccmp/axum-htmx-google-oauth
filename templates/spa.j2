@@ -12,21 +12,21 @@
   </header>
 
   {# Content #}
-  {%block content_section%}
+  {# {%block content_section%}
   <div class="container" id="content_section" hx-get="/htmx/{{page}}" hx-target="#content_section" hx-swap="innerHTML"
     hx-trigger="load" hx-history-elt hx-ext="response-targets" hx-target-error="#any-errors">
   </div>
   <div class="container" id="any-errors"></div>
   {# See https://v1.htmx.org/extensions/response-targets/ #}
-  {%endblock%}
+  {%endblock%} #}
 
-  {# {%block content_section%}
+  {%block content_section%}
   <div class="container" id="content_section" hx-get="/htmx/{{page}}" hx-target="#content_section" hx-swap="innerHTML"
     hx-trigger="load" hx-history-elt>
   </div>
-  <div class="container" id="any-errors"></div>
-  {% include "htmx_error.j2" %}
-  {%endblock%} #}
+  {# <div class="container" id="any-errors"></div>
+  {% include "htmx_error.j2" %} #}
+  {%endblock%}
 
 </body>
 

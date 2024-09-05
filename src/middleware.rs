@@ -72,7 +72,7 @@ pub async fn authenticate(
     req: Request<Body>,
     next: Next,
 ) -> impl IntoApiResponse {
-    let error_response = json!({"message": "Authorization required."});
+    let error_response = json!({"message": "Authorization required(authenticate())"});
 
     async fn process_authentication(
         is_admin_required: bool,
