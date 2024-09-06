@@ -316,13 +316,21 @@ pub async fn verify_idtoken(
     let skew = 2; // allow 2 seconds of skew
 
     if let Some(nbf) = idinfo.nbf {
-        if now + skew < nbf.try_into().unwrap() { // tolerate the system clock to be the skew seconds behind
-            return Err(TokenVerificationError::TokenNotYetValidNotBeFore(now, nbf.try_into().unwrap()));
+        if now + skew < nbf.try_into().unwrap() {
+            // tolerate the system clock to be the skew seconds behind
+            return Err(TokenVerificationError::TokenNotYetValidNotBeFore(
+                now,
+                nbf.try_into().unwrap(),
+            ));
         }
     }
 
-    if now + skew < idinfo.iat.try_into().unwrap() { // tolerate the system clock to be the skew seconds behind
-        return Err(TokenVerificationError::TokenNotYetValidIssuedAt(now, idinfo.iat.try_into().unwrap()));
+    if now + skew < idinfo.iat.try_into().unwrap() {
+        // tolerate the system clock to be the skew seconds behind
+        return Err(TokenVerificationError::TokenNotYetValidIssuedAt(
+            now,
+            idinfo.iat.try_into().unwrap(),
+        ));
     } else if now > idinfo.exp.try_into().unwrap() {
         return Err(TokenVerificationError::TokenExpired);
     }

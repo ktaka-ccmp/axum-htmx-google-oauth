@@ -1,0 +1,54 @@
+<script src="https://accounts.google.com/gsi/client"></script>
+<script>
+(function() {
+function updateSignInState() {
+    google.accounts.id.initialize({
+        client_id: "{{ client_id }}",
+        callback: onSignIn,
+        ux_mode: "redirect",
+        {# use_fedcm_for_prompt: true, #}
+        nonce: "{{ nonce }}",
+        login_uri: "{{ login_url }}",
+    });
+
+    google.accounts.id.renderButton(document.getElementById("signInDiv"), {
+        theme: "outline",
+        size: "large",
+        shape: "circle",
+        type: "icon",
+        state: window.location.pathname,
+    });
+
+    {# google.accounts.id.prompt(); #}
+
+    console.log("New Url:", window.location.pathname);
+}
+
+// the following script aims to set current location in the data-state,
+// so that login endpoint can redirect back to the current location. 
+
+    window.addEventListener('load', () => {
+        updateSignInState();
+     });
+
+     window.addEventListener('htmx:pushedIntoHistory', (e) => {
+        console.log("htmx:pushedIntoHistory", e);
+        updateSignInState();
+     });
+
+     window.addEventListener('htmx:afterSettle', function (e) {
+        if (e.detail.target && e.detail.target.id === 'auth_navbar') {
+            console.log("htmx:afterSettle target.id:", e.detail.target.id);
+            updateSignInState();
+        }
+     });
+
+     window.addEventListener('htmx:historyRestore', (e) => {
+        console.log("htmx:historyRestore", e);
+        updateSignInState();
+     });
+
+})();
+</script>
+
+<div id="signInDiv"></div>

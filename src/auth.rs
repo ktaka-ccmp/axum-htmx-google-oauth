@@ -57,6 +57,7 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
 #[derive(Debug, Deserialize)]
 struct FormData {
     credential: Option<String>,
+    state: Option<String>,
 }
 
 async fn login(
@@ -81,15 +82,27 @@ async fn login(
                     "user": user.email,
                 });
 
-                let response = Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .header("HX-Trigger", "ReloadNavbar")
-                    .body(Json(message).into_response().into_body())
-                    .unwrap();
-
                 let jar = new_session(user, state).await;
-                (jar, response).into_response()
+
+                // Redirect to the original page if state is set in the form data.
+                // Otherwise, return the message in JSON format.
+                if let Some(href) = form_data.state {
+                    println!("state: {:?}", href);
+                    let response = Response::builder()
+                        .status(StatusCode::FOUND)
+                        .header(header::LOCATION, href)
+                        .body(Json(message).into_response().into_body())
+                        .unwrap();
+                    (jar, response).into_response()
+                } else {
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("HX-Trigger", "ReloadNavbar")
+                        .body(Json(message).into_response().into_body())
+                        .unwrap();
+                    (jar, response).into_response()
+                }
             }
             Err(e) => {
                 let message = Error {
@@ -265,8 +278,9 @@ async fn auth_navbar(
     fn auth_navbar_login() -> impl IntoApiResponse {
         let client_id =
             std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
+        let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
 
-        let login_url = "/auth/login".to_string();
+        let login_url = origin_server + "/auth/login";
         let icon_url = "/asset/icon.png".to_string();
         let refresh_token_url = "/auth/refresh_token".to_string();
         let mutate_user_url = "/auth/mutate_user".to_string();
@@ -660,10 +674,10 @@ fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCo
 
     if let Some(jar) = jar {
         if let Some(expected_nonce) = jar.get("expected_nonce") {
-
             println!(
                 "expected_nonce(hashed) from header: {:?}, hashed idinfo.nonce: {:?}",
-                expected_nonce.to_string(), idinfo_nonce
+                expected_nonce.to_string(),
+                idinfo_nonce
             );
             if expected_nonce.to_string() != idinfo_nonce {
                 let message = Error {
