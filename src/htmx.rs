@@ -36,7 +36,7 @@ struct ContentTopTemplate {
 /// Handles the content list request.
 async fn content_top() -> impl IntoApiResponse {
     let template = ContentTopTemplate {
-        title: "Htmx Spa Top".to_string(),
+        title: "Htmx Spa Top(Rust)".to_string(),
     };
     (StatusCode::OK, Html(template.render().unwrap())).into_response()
     // The following line also works:

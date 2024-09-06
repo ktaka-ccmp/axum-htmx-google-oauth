@@ -48,8 +48,10 @@ pub enum TokenVerificationError {
     InvalidTokenIssuer(String, String),
     #[error("Token expired")]
     TokenExpired,
-    #[error("Token not yet valid")]
-    TokenNotYetValid,
+    #[error("Token not yet valid, now: {0}, nbf: {1}")]
+    TokenNotYetValidNotBeFore(u64, u64),
+    #[error("Token not yet valid, now: {0}, iat: {1}")]
+    TokenNotYetValidIssuedAt(u64, u64),
     #[error("No matching key found in JWKS")]
     NoMatchingKey,
     #[error("Missing key component: {0}")]
@@ -310,16 +312,25 @@ pub async fn verify_idtoken(
         ));
     }
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as usize;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let skew = 2; // allow 2 seconds of skew
 
     if let Some(nbf) = idinfo.nbf {
-        if now < nbf.try_into().unwrap() {
-            return Err(TokenVerificationError::TokenNotYetValid);
+        if now + skew < nbf.try_into().unwrap() {
+            // tolerate the system clock to be the skew seconds behind
+            return Err(TokenVerificationError::TokenNotYetValidNotBeFore(
+                now,
+                nbf.try_into().unwrap(),
+            ));
         }
     }
 
-    if now < idinfo.iat.try_into().unwrap() {
-        return Err(TokenVerificationError::TokenNotYetValid);
+    if now + skew < idinfo.iat.try_into().unwrap() {
+        // tolerate the system clock to be the skew seconds behind
+        return Err(TokenVerificationError::TokenNotYetValidIssuedAt(
+            now,
+            idinfo.iat.try_into().unwrap(),
+        ));
     } else if now > idinfo.exp.try_into().unwrap() {
         return Err(TokenVerificationError::TokenExpired);
     }
