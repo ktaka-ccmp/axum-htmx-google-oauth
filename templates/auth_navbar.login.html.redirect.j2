@@ -1,0 +1,101 @@
+{# The following script should be loaded every time this component is loaded. #}
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+<div id="g_id_onload"
+     data-client_id="{{ client_id }}",
+     data-context="signin"
+     data-login_uri="{{ login_url }}"
+     data-ux_mode="redirect"
+     {# data-callback=onSignIn #}
+     data-nonce="{{ nonce }}"
+     data-close_on_tap_outside="true"
+     data-itp_support="true"
+     data-auto_prompt="false"
+     {# data-use_fedcm_for_prompt="true" #}
+     >
+</div>
+
+<div class="g_id_signin"
+     data-type="icon"
+     data-shape="square"
+     data-theme="outline"
+     data-size="large"
+     data-state="something_is_wrong"
+     id="signInDiv"
+     >
+</div>
+
+<script>
+// the following script aims to set current location in the data-state,
+// so that login endpoint can redirect back to the current location. 
+(function() {
+     function updateSignInState(newState) {
+          const signInDiv = document.getElementById('signInDiv');
+          if (!signInDiv) return;
+
+          // Update data-state attribute
+          signInDiv.setAttribute('data-state', newState);
+
+          // Force re-render of the button
+          if (window.google && window.google.accounts && window.google.accounts.id) {
+               google.accounts.id.renderButton(signInDiv, {
+                    type: signInDiv.getAttribute('data-type'),
+                    shape: signInDiv.getAttribute('data-shape'),
+                    theme: signInDiv.getAttribute('data-theme'),
+                    size: signInDiv.getAttribute('data-size'),
+                    state: newState
+               });
+          }
+
+          console.log("New Url:", newState);
+     }
+
+     // Initial setup
+     window.addEventListener('load', () => {
+          updateSignInState(window.location.pathname);
+     });
+
+     // Listen for location history changes
+     window.addEventListener('htmx:pushedIntoHistory', (e) => {
+          console.log("htmx:pushedIntoHistory", e);
+          updateSignInState(window.location.pathname);
+     });
+
+     // Listen for auth_navbar reload after logout
+     window.addEventListener('htmx:afterSettle', function (e) {
+          if (e.detail.target && e.detail.target.id === 'auth_navbar') {
+               console.log("htmx:afterSettle target.id:", e.detail.target.id);
+               updateSignInState(window.location.pathname);
+          }
+     });
+
+     // Listen for browser back/forward button
+     window.addEventListener('htmx:historyRestore', (e) => {
+          console.log("htmx:historyRestore", e);
+          updateSignInState(window.location.pathname);
+     });
+
+{#
+     document.body.addEventListener('DOMContentLoaded', (e) => {
+          console.log("DOMContentLoaded", e);
+     });
+
+     window.addEventListener('popstate', (e) => {
+          console.log("popstate", e);
+     });
+
+     window.addEventListener('DOMContentLoaded', (e) => {
+          console.log("DOMContentLoaded", e);
+     });
+
+     document.body.addEventListener('LogoutSecretContent', (e) => {
+          console.log("LogoutSecretContent", e);
+     });
+
+     document.body.addEventListener('ReloadNavbar', (e) => {
+          console.log("ReloadNavbar", e);
+     });
+#}
+})();
+
+</script>
