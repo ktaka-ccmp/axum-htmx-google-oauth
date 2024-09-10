@@ -76,10 +76,19 @@ cargo add askama_axum
 
 ```text
 $ cat .env 
-DATABASE_URL="sqlite:./db/sqlite.db"
-ORIGIN_SERVER="http://localhost:3000"
+#ORIGIN_SERVER="http://localhost:3000"
+ORIGIN_SERVER="https://ff36-217-178-145-231.ngrok-free.app"
+
+DATABASE_URL="sqlite:./db/data.db"
+CACHE_STORE="db" # db or redis
+CACHE_DB_URL="sqlite:./db/cache.db"
+CACHE_REDIS_URL=""
 
 GOOGLE_OAUTH2_CLIENT_ID="xxxxxx-yyyyyy.apps.googleusercontent.com"
+
+SESSION_MAX_AGE=180
+NONCE_SALT="xxxxxxxxxxxx"
+ADMIN_EMAIL=admin@example.com
 ```
 
 ## run app
