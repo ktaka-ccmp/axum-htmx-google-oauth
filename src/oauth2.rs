@@ -4,6 +4,7 @@ use aide::{
         ApiRouter, IntoApiResponse,
     },
     OperationOutput,
+    NoApi,
 };
 
 use async_session::{MemoryStore, Session, SessionStore};
@@ -45,7 +46,7 @@ pub fn create_router(_state: Arc<CrateAppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/", get_with(google_auth, |op| op.tag("auth")))
         .api_route("/authorized", get_with(authorized, |op| op.tag("auth")))
-        // .api_route("/protected", get_with(protected, |op| op.tag("auth")))
+        .api_route("/protected", get_with(protected, |op| op.tag("auth")))
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/popup_close", get_with(popup_close, |op| op.tag("auth")))
         .with_state(app_state)
@@ -326,11 +327,9 @@ async fn google_auth(
     )?;
 
     Ok((headers, Redirect::to(&auth_url)))
-    // Ok(Redirect::to(auth_url.as_str()))
 }
 
-// Valid user session required. If there is none, redirect to the auth page
-async fn protected(user: User) -> impl IntoApiResponse {
+async fn protected(NoApi(user): NoApi<User>) -> impl IntoApiResponse {
     format!("Welcome to the protected area :)\nHere's your info:\n{user:?}")
 }
 
