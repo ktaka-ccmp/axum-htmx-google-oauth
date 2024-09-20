@@ -439,7 +439,7 @@ async fn authorized(
     )?;
     // println!("Headers: {:#?}", headers);
 
-    Ok((headers, Redirect::to("/popup_close")))
+    Ok((headers, Redirect::to("/oauth2/google/popup_close")))
 }
 
 async fn validate_origin(headers: &HeaderMap, auth_url: &str) -> Result<(), AppError> {
