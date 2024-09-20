@@ -1,16 +1,12 @@
 use aide::{
-    axum::{
-        routing::get_with,
-        ApiRouter, IntoApiResponse,
-    },
-    OperationOutput,
-    NoApi,
+    axum::{routing::get_with, ApiRouter, IntoApiResponse},
+    NoApi, OperationOutput,
 };
 
 use async_session::{MemoryStore, Session, SessionStore};
 use axum::{
     async_trait,
-    extract::{FromRef, FromRequestParts, Query, State},
+    extract::{Form, FromRef, FromRequestParts, Query, State},
     http::{header::SET_COOKIE, HeaderMap},
     response::{IntoResponse, Redirect, Response},
     RequestPartsExt,
@@ -45,7 +41,11 @@ pub fn create_router(_state: Arc<CrateAppState>) -> ApiRouter {
 
     ApiRouter::new()
         .api_route("/", get_with(google_auth, |op| op.tag("auth")))
-        .api_route("/authorized", get_with(authorized, |op| op.tag("auth")))
+        .api_route(
+            "/authorized",
+            get_with(get_authorized, |op| op.tag("auth"))
+                .post_with(post_authorized, |op| op.tag("auth")),
+        )
         .api_route("/protected", get_with(protected, |op| op.tag("auth")))
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/popup_close", get_with(popup_close, |op| op.tag("auth")))
@@ -70,8 +70,8 @@ fn app_state_init() -> AppState {
         nonce: None,
         state: None,
         csrf_token: None,
-        response_mode: Some(ResponseMode::FormPost),
-        // response_mode: Some(ResponseMode::Query), // "query",
+        // response_mode: Some(ResponseMode::FormPost),
+        response_mode: Some(ResponseMode::Query), // "query",
         prompt: Some(Prompt::Consent),            // "consent",
         access_type: Some(AccessType::Online),    // "online",
     };
@@ -82,6 +82,7 @@ fn app_state_init() -> AppState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum ResponseMode {
     Query,
@@ -214,7 +215,7 @@ struct User {
     email: String,
     given_name: String,
     id: String,
-    hd: String,
+    hd: Option<String>,
     verified_email: bool,
 }
 
@@ -380,7 +381,7 @@ async fn delete_session_from_store(
     Ok(())
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema, Serialize)]
 struct AuthRequest {
     code: String,
     state: String,
@@ -397,20 +398,49 @@ struct OidcTokenResponse {
     id_token: Option<String>,
 }
 
-async fn authorized(
+async fn post_authorized(
+    State(params): State<OAuth2Params>,
+    State(store): State<MemoryStore>,
+    TypedHeader(cookies): TypedHeader<headers::Cookie>,
+    headers: HeaderMap,
+    Form(form): Form<AuthRequest>,
+) -> Result<impl IntoApiResponse, AppError> {
+    // println!("Form: {:#?}", form);
+    // println!("code: {:#?}", form.code);
+    // println!("Params: {:#?}", params);
+    println!("Cookies: {:#?}", cookies.get(CSRF_COOKIE_NAME));
+
+    validate_origin(&headers, &params.auth_url).await?;
+    // csrf_checks(cookies.clone(), &store, &query, headers).await?;
+    // delete_session_from_store(cookies, CSRF_COOKIE_NAME.to_string(), &store).await?;
+
+    authorized(form.code.clone(), params, store).await
+}
+
+async fn get_authorized(
     Query(query): Query<AuthRequest>,
     State(store): State<MemoryStore>,
     State(params): State<OAuth2Params>,
     TypedHeader(cookies): TypedHeader<headers::Cookie>,
     headers: HeaderMap,
 ) -> Result<impl IntoApiResponse, AppError> {
-    println!("Query: {:#?}", query);
-    println!("code: {:#?}", query.code);
-    println!("Params: {:#?}", params);
+    // println!("Query: {:#?}", query);
+    // println!("code: {:#?}", query.code);
+    // println!("Params: {:#?}", params);
+    // println!("Cookies: {:#?}", cookies.get(CSRF_COOKIE_NAME));
 
     validate_origin(&headers, &params.auth_url).await?;
     csrf_checks(cookies.clone(), &store, &query, headers).await?;
+    delete_session_from_store(cookies, CSRF_COOKIE_NAME.to_string(), &store).await?;
 
+    authorized(query.code.clone(), params, store).await
+}
+
+async fn authorized(
+    code: String,
+    params: OAuth2Params,
+    store: MemoryStore,
+) -> Result<(HeaderMap, Redirect), AppError> {
     let mut headers = HeaderMap::new();
     header_set_cookie(
         &mut headers,
@@ -420,9 +450,7 @@ async fn authorized(
         -86400,
     )?;
 
-    delete_session_from_store(cookies, CSRF_COOKIE_NAME.to_string(), &store).await?;
-
-    let (access_token, id_token) = exchange_code_for_token(params, query.code).await?;
+    let (access_token, id_token) = exchange_code_for_token(params, code).await?;
     println!("Access Token: {:#?}", access_token);
     println!("ID Token: {:#?}", id_token);
 
