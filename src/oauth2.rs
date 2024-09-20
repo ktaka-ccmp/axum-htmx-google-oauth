@@ -70,7 +70,8 @@ fn app_state_init() -> AppState {
         nonce: None,
         state: None,
         csrf_token: None,
-        response_mode: Some(ResponseMode::Query), // "query",
+        response_mode: Some(ResponseMode::FormPost),
+        // response_mode: Some(ResponseMode::Query), // "query",
         prompt: Some(Prompt::Consent),            // "consent",
         access_type: Some(AccessType::Online),    // "online",
     };
