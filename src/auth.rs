@@ -66,7 +66,7 @@ async fn login(
     body: Bytes,
 ) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
-    // println!("form_data: {:?}", form_data);
+    println!("form_data: {:?}", form_data);
     let jwt = form_data.credential.unwrap();
     println!("jwt: {:?}", jwt);
 
