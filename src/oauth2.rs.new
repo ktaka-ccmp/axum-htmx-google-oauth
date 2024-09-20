@@ -1,24 +1,35 @@
 use aide::{
     axum::{
-        routing::get_with,
+        routing::{get_with, post_with},
         ApiRouter, IntoApiResponse,
     },
-    OperationOutput,
+    openapi::Operation,
+    openapi::Operation as OpenApiOperation,
+    openapi::Response as OpenApiResponse,
+    OperationInput, OperationOutput,
+    NoApi,
+    OperationIo,
 };
 
+// use anyhow::{Context, Ok, Result};
 use async_session::{MemoryStore, Session, SessionStore};
 use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts, Query, State},
     http::{header::SET_COOKIE, HeaderMap},
     response::{IntoResponse, Redirect, Response},
-    RequestPartsExt,
+    routing::get,
+    RequestPartsExt, Router,
 };
 use axum_extra::{headers, typed_header::TypedHeaderRejectionReason, TypedHeader};
 use http::{header, request::Parts, StatusCode};
 
 use serde::{Deserialize, Serialize};
 use std::env;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+// use tower_http::cors::CorsLayer;
+// use http::HeaderValue;
 
 use std::sync::Arc;
 use url::Url;
@@ -27,7 +38,14 @@ use chrono::{DateTime, Duration, Utc};
 use rand::{thread_rng, Rng};
 use urlencoding::encode;
 
-use crate::AppState as CrateAppState;
+// use askama::Template;
+use askama_axum::Template;
+use axum::response::Html;
+
+// use axum_server::tls_rustls::RustlsConfig;
+use crate::{AppState as CrateAppState, DB};
+use std::{net::SocketAddr, path::PathBuf};
+use tokio::task::JoinHandle;
 
 static AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 static TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -38,6 +56,16 @@ static COOKIE_NAME: &str = "__Host-SessionId";
 static CSRF_COOKIE_NAME: &str = "__Host-CsrfId";
 static COOKIE_MAX_AGE: i64 = 600; // 10 minutes
 static CSRF_COOKIE_MAX_AGE: i64 = 20; // 20 seconds
+
+// pub fn create_router(state: Arc<AppState>) -> ApiRouter {
+//     ApiRouter::new()
+//         .api_route(
+//             "/logout_content",
+//             get_with(logout_content, |op| op.tag("auth")),
+//         )
+//         // .route_layer(axum::middleware::from_fn(check_hx_request))
+//         .with_state(state)
+// }
 
 pub fn create_router(_state: Arc<CrateAppState>) -> ApiRouter {
     let app_state = app_state_init();
@@ -97,7 +125,6 @@ impl ResponseMode {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum Prompt {
     None,
@@ -125,7 +152,6 @@ impl Prompt {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum AccessType {
     Online,
@@ -141,7 +167,6 @@ impl AccessType {
     }
 }
 
-#[allow(dead_code)]
 enum ResponseType {
     None = 0b000,
     Code = 0b001,
@@ -444,7 +469,7 @@ async fn authorized(
 }
 
 async fn validate_origin(headers: &HeaderMap, auth_url: &str) -> Result<(), AppError> {
-    let parsed_url = Url::parse(auth_url).expect("Invalid URL");
+    let parsed_url = Url::parse(&auth_url).expect("Invalid URL");
     let scheme = parsed_url.scheme();
     let host = parsed_url.host_str().unwrap_or_default();
     let port = parsed_url

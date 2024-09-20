@@ -698,7 +698,7 @@ fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCo
     let message = Error {
         error: "expected_nonce not found".to_string(),
     };
-    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
+    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
 
     // Ok(())
 }

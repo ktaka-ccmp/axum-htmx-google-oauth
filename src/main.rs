@@ -21,9 +21,9 @@ use api_server_htmx::cachestore;
 use api_server_htmx::debug;
 use api_server_htmx::htmx;
 use api_server_htmx::htmx_secret;
+use api_server_htmx::oauth2;
 use api_server_htmx::spa;
 use api_server_htmx::user;
-use api_server_htmx::oauth2;
 
 use api_server_htmx::AppState;
 
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/auth", auth::create_router(state.clone()))
         .nest("/crud", user::create_router(pool.clone()))
         .nest("/debug", debug::create_router(state.clone()))
-        .nest("/oauth2/google", oauth2::create_router())
+        .nest("/oauth2/google", oauth2::create_router(state.clone()))
         .layer(TraceLayer::new_for_http())
         .with_state(());
 
