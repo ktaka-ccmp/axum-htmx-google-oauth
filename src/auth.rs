@@ -35,8 +35,8 @@ use crate::{AppState, DB};
 // use crate::middleware::check_hx_request;
 // use std::env;
 
-use crate::settings::NONCE_COOKIE_NAME;
 use crate::settings::NONCE_COOKIE_MAX_AGE;
+use crate::settings::NONCE_COOKIE_NAME;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
@@ -523,7 +523,7 @@ async fn mutate_session(
     }
 }
 
-async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
+pub async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
     let session = state
         .cache
         .create_session(user.id.unwrap(), &user.email)

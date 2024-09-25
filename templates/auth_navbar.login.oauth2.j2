@@ -33,7 +33,8 @@
 
                // Reload the parent window
                setTimeout(() => {
-                    window.location.reload();
+                    // window.location.reload();
+                    htmx.trigger("#auth_navbar", "ReloadNavbar", {});
                }, 100);  // Wait for 1 second before reloading
           }
 

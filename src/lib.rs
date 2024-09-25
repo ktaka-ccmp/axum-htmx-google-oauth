@@ -10,9 +10,9 @@ pub mod idtoken;
 pub mod middleware;
 pub mod models; // Ensure this is also included if models are in a separate file
 pub mod oauth2;
+pub mod settings;
 pub mod spa;
 pub mod user;
-pub mod settings;
 
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
