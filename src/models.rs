@@ -42,9 +42,10 @@ pub struct IdInfo {
     pub iat: i64,
     pub exp: i64,
     pub nbf: Option<i64>,
-    pub jti: String,
+    pub jti: Option<String>,
     pub nonce: Option<String>,
     pub hd: Option<String>,
+    pub at_hash: Option<String>,
 }
 
 #[derive(FromRow, Serialize, JsonSchema, Deserialize, Debug, Clone)]
