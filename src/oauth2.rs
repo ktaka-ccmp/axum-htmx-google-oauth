@@ -693,47 +693,6 @@ impl OperationOutput for AuthRedirect {
     }
 }
 
-#[async_trait]
-impl<S> FromRequestParts<S> for User
-where
-    MemoryStore: FromRef<S>,
-    S: Send + Sync,
-{
-    // If anything goes wrong or no session is found, redirect to the auth page
-    type Rejection = AuthRedirect;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let store = MemoryStore::from_ref(state);
-
-        println!("Retrieving cookies");
-        let cookies = parts
-            .extract::<TypedHeader<headers::Cookie>>()
-            .await
-            .map_err(|e| match *e.name() {
-                header::COOKIE => match e.reason() {
-                    TypedHeaderRejectionReason::Missing => AuthRedirect,
-                    _ => panic!("unexpected error getting Cookie header(s): {e}"),
-                },
-                _ => panic!("unexpected error getting cookies: {e}"),
-            })?;
-        // println!("Cookies: {:#?}", cookies);
-        let session_cookie = cookies.get(COOKIE_NAME).ok_or(AuthRedirect)?;
-
-        // Retrieve session from store
-        let session = store
-            .load_session(session_cookie.to_string())
-            .await
-            .unwrap()
-            .ok_or(AuthRedirect)?;
-
-        // println!("Loaded Session: {:#?}", session);
-        // Retrieve user data from session
-        let user = session.get::<User>("user").ok_or(AuthRedirect)?;
-
-        Ok(user)
-    }
-}
-
 use thiserror::Error;
 
 #[derive(Error, Debug, Serialize)]

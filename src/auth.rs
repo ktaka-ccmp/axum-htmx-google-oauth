@@ -166,8 +166,6 @@ async fn logout(
             .body(Json(message).into_response().into_body())
             .unwrap();
 
-        // println!("jar: {:?}", jar);
-        // (jar, Redirect::to("/auth/me")).into_response()
         (jar, response).into_response()
     } else {
         (StatusCode::OK, "No active session found").into_response()
