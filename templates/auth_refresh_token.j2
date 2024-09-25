@@ -11,7 +11,7 @@
 
         // Main function to refresh the token
         const do_refresh_token = () => {
-            const csrfToken = getCookieValue('csrf_token');
+            const csrfToken = getCookieValue('{{csrf_token_name}}');
             console.log("do_refresh_token, csrf_token: ", csrfToken);
 
             if (!csrfToken) {
@@ -33,7 +33,7 @@
 
         const do_mutate_user = () => {
             //    const userToken = document.getElementById('userToken').value; // old user
-            const userToken = getCookieValue('user_token');
+            const userToken = getCookieValue('{{user_token_name}}'); // new user
             console.log("do_mutate_user, new user: ", userToken);
 
             htmx.ajax('GET', '{{ mutate_user_url }}', {
@@ -63,11 +63,11 @@
         }, activityCheckInterval);
 
         // Interval for detecting changes in 'user_token' cookie
-        let lastUT = getCookieValue('user_token');
+        let lastUT = getCookieValue('{{user_token_name}}');
         const tokenCheckInterval = 1000; // 1 second
         window.clearInterval(window.tokenChangeInterval); // Clear existing interval if script is reloaded
         window.tokenChangeInterval = setInterval(() => {
-            const currentUT = getCookieValue('user_token');
+            const currentUT = getCookieValue('{{user_token_name}}');
             if (currentUT !== lastUT) {
                 console.log('Cookie user_token has changed, attempting to refresh token...');
                 do_mutate_user();

@@ -5,9 +5,17 @@ pub(crate) static OAUTH2_RESPONSE_MODE: &str = "form_post";
 // pub(crate) static OAUTH2_RESPONSE_MODE: &str = "query";
 
 // "__Host-" prefix are added to make cookies "host-only".
-pub(crate) static COOKIE_NAME: &str = "__Host-SessionId";
+pub(crate) static SESSION_COOKIE_NAME: &str = "__Host-SessionId";
+pub(crate) static SESSION_COOKIE_MAX_AGE: i64 = 180; // 3 minutes
+
+pub(crate) static CSRF_TOKEN_NAME: &str = "__Host-CrfToken";
+pub(crate) static USER_TOKEN_NAME: &str = "__Host-UserToken";
+
+// pub(crate) static SESSION_COOKIE_NAME: &str = "SessionId";
+// pub(crate) static CSRF_TOKEN_NAME: &str = "csrf_token";
+// pub(crate) static USER_TOKEN_NAME: &str = "user_token";
+
 pub(crate) static CSRF_COOKIE_NAME: &str = "__Host-CsrfId";
-pub(crate) static COOKIE_MAX_AGE: i64 = 600; // 10 minutes
 pub(crate) static CSRF_COOKIE_MAX_AGE: i64 = 20; // 20 seconds
 
 pub(crate) static NONCE_COOKIE_NAME: &str = "__Host-Nonce";

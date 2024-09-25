@@ -35,6 +35,12 @@ use crate::{AppState, DB};
 // use crate::middleware::check_hx_request;
 // use std::env;
 
+use super::settings::SESSION_COOKIE_MAX_AGE;
+use super::settings::SESSION_COOKIE_NAME;
+
+use super::settings::CSRF_TOKEN_NAME;
+use super::settings::USER_TOKEN_NAME;
+
 use crate::settings::NONCE_COOKIE_MAX_AGE;
 use crate::settings::NONCE_COOKIE_NAME;
 
@@ -129,7 +135,7 @@ async fn logout(
     let mut session_deleted = false;
 
     if let Some(mut jar) = jar {
-        if let Some(session_id) = jar.get("session_id") {
+        if let Some(session_id) = jar.get(SESSION_COOKIE_NAME) {
             if let Err(e) = state.cache.delete_session(session_id.value()).await {
                 eprintln!("Failed to delete session: {}", e);
             } else {
@@ -137,9 +143,10 @@ async fn logout(
             }
         }
 
-        let cookies_to_remove = ["session_id", "csrf_token", "user_token"];
+        let cookies_to_remove = [SESSION_COOKIE_NAME, CSRF_TOKEN_NAME, USER_TOKEN_NAME];
         for name in cookies_to_remove.iter() {
-            jar = jar.remove(Cookie::build((*name, "")).path("/"));
+            // .path("/").secure(true) is necessary to remove the "__Host-" cookie.
+            jar = jar.remove(Cookie::build((*name, "")).path("/").secure(true));
         }
 
         let message = if session_deleted {
@@ -155,9 +162,11 @@ async fn logout(
         let response = Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/json")
+            .header("HX-Trigger", "ReloadNavbar")
             .body(Json(message).into_response().into_body())
             .unwrap();
 
+        // println!("jar: {:?}", jar);
         // (jar, Redirect::to("/auth/me")).into_response()
         (jar, response).into_response()
     } else {
@@ -221,9 +230,9 @@ async fn refresh_token(
                 Ok(newjar) => {
                     let message = serde_json::json!({
                         "ok": true,
-                        "session_id": newjar.get("session_id").unwrap().value(),
-                        "csrf_token": newjar.get("csrf_token").unwrap().value(),
-                        "user_token": newjar.get("user_token").unwrap().value(),
+                        "session_id": newjar.get(SESSION_COOKIE_NAME).unwrap().value(),
+                        "csrf_token": newjar.get(CSRF_TOKEN_NAME).unwrap().value(),
+                        "user_token": newjar.get(USER_TOKEN_NAME).unwrap().value(),
                     });
 
                     let response = Response::builder()
@@ -257,6 +266,8 @@ struct NavbarLoginTemplate {
     mutate_user_url: String,
     userToken: String,
     nonce: String,
+    csrf_token_name: String,
+    user_token_name: String,
 }
 
 #[allow(non_snake_case)]
@@ -270,6 +281,8 @@ struct NavbarLogoutTemplate {
     name: String,
     picture: String,
     userToken: String,
+    csrf_token_name: String,
+    user_token_name: String,
 }
 
 async fn auth_navbar(
@@ -319,6 +332,8 @@ async fn auth_navbar(
             mutate_user_url,
             userToken: "anonymous".to_string(),
             nonce,
+            csrf_token_name: CSRF_TOKEN_NAME.to_string(),
+            user_token_name: USER_TOKEN_NAME.to_string(),
         };
         let response = Html(template.render().unwrap());
         (jar, response).into_response()
@@ -344,6 +359,8 @@ async fn auth_navbar(
             name: user.name.to_string(),
             picture: picture_url,
             userToken: hash_email(&user.email).to_string(),
+            csrf_token_name: CSRF_TOKEN_NAME.to_string(),
+            user_token_name: USER_TOKEN_NAME.to_string(),
         };
         Html(template.render().unwrap())
     }
@@ -458,13 +475,30 @@ async fn jar_to_session(
         None => Err(Error {
             error: "CookieJar not found".to_string(),
         }),
-        Some(cookiejar) => match cookiejar.get("session_id") {
+        Some(cookiejar) => match cookiejar.get(SESSION_COOKIE_NAME) {
             None => Err(Error {
                 error: "Session ID not found in CookieJar".to_string(),
             }),
             Some(session_id) => {
-                let session = state.cache.get_session(session_id.value()).await.unwrap();
-                Ok(session.unwrap())
+                let session = match state.cache.get_session(session_id.value()).await {
+                    Ok(session) => session,
+                    Err(e) => {
+                        return Err(Error {
+                            error: e.to_string(),
+                        })
+                    }
+                };
+                println!("session: {:?}", session);
+                match session {
+                    None => Err(Error {
+                        error: "Session not found".to_string(),
+                    }),
+                    Some(session) => {
+                        println!("session: {:?}", session);
+                        Ok(session)
+                    }
+                }
+                // Ok(session.unwrap())
             }
         },
     }
@@ -484,7 +518,7 @@ async fn mutate_session(
         None => Err(Error {
             error: "CookieJar not found".to_string(),
         }),
-        Some(cookiejar) => match cookiejar.get("session_id") {
+        Some(cookiejar) => match cookiejar.get(SESSION_COOKIE_NAME) {
             None => Err(Error {
                 error: "Session ID not found in CookieJar".to_string(),
             }),
@@ -538,13 +572,13 @@ fn new_cookie(session: &Session) -> CookieJar {
         .expect("SESSION_MAX_AGE must be set")
         .parse::<i64>()
         .expect("SESSION_MAX_AGE must be an integer");
-    let max_age = Duration::seconds(max_age_sec);
+    let max_age = Duration::seconds(SESSION_COOKIE_MAX_AGE);
 
     let expires = OffsetDateTime::now_utc() + max_age;
 
     let mut jar = CookieJar::new();
 
-    let cookie = Cookie::build(("session_id", session.session_id.clone()))
+    let cookie = Cookie::build((SESSION_COOKIE_NAME, session.session_id.clone()))
         .path("/")
         .secure(true)
         .http_only(true)
@@ -555,7 +589,7 @@ fn new_cookie(session: &Session) -> CookieJar {
 
     jar = jar.add(cookie);
 
-    let cookie = Cookie::build(("csrf_token", session.csrf_token.clone()))
+    let cookie = Cookie::build((CSRF_TOKEN_NAME, session.csrf_token.clone()))
         .path("/")
         .secure(true)
         .http_only(false)
@@ -566,7 +600,7 @@ fn new_cookie(session: &Session) -> CookieJar {
 
     jar = jar.add(cookie);
 
-    let cookie = Cookie::build(("user_token", hash_email(&session.email)))
+    let cookie = Cookie::build((USER_TOKEN_NAME, hash_email(&session.email)))
         .path("/")
         .secure(true)
         .http_only(false)

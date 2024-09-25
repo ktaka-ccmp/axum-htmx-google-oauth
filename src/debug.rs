@@ -11,6 +11,8 @@ use axum_extra::extract::cookie::CookieJar;
 
 use askama_axum::Template;
 
+use super::settings::SESSION_COOKIE_NAME;
+
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/signin", get_with(signinpage, |op| op.tag("debug")))
@@ -47,7 +49,7 @@ async fn signinpage() -> Html<String> {
 }
 
 async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
-    if let Some(session_id) = jar.get("session_id") {
+    if let Some(session_id) = jar.get(SESSION_COOKIE_NAME) {
         println!("session_id: {}", session_id.value());
         (
             StatusCode::OK,
@@ -66,7 +68,7 @@ async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
 
 async fn me2(jar: Option<CookieJar>) -> impl IntoApiResponse {
     if let Some(jar) = jar {
-        if let Some(session_id) = jar.get("session_id") {
+        if let Some(session_id) = jar.get(SESSION_COOKIE_NAME) {
             println!("session_id: {}", session_id.value());
             (
                 StatusCode::OK,

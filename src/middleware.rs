@@ -16,6 +16,8 @@ use crate::models::User;
 use crate::user::get_user_by_id;
 use crate::AppState;
 
+use super::settings::SESSION_COOKIE_NAME;
+
 /// Represents an error response.
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -51,7 +53,7 @@ pub async fn check_auth(
 
     if let Some(cookie) = cookie {
         println!("Cookie found.{:?}", cookie);
-        if let Some(session_id) = cookie.get("session_id") {
+        if let Some(session_id) = cookie.get(SESSION_COOKIE_NAME) {
             println!("Session ID: {:?}", session_id);
         } else {
             println!("Session ID not found in cookie.");
@@ -103,7 +105,7 @@ pub async fn authenticate(
     }
 
     match cookiejar.and_then(|jar| {
-        jar.get("session_id")
+        jar.get(SESSION_COOKIE_NAME)
             .map(|cookie| cookie.value().to_string())
     }) {
         Some(session_id) => {
