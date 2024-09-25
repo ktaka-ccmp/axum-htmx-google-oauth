@@ -35,6 +35,9 @@ use crate::{AppState, DB};
 // use crate::middleware::check_hx_request;
 // use std::env;
 
+use crate::settings::NONCE_COOKIE_NAME;
+use crate::settings::NONCE_COOKIE_MAX_AGE;
+
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/login", post_with(login, |op| op.tag("auth")))
@@ -294,15 +297,16 @@ async fn auth_navbar(
         let hashed_nonce = hash_nonce(nonce.as_str());
 
         let mut jar = CookieJar::new();
-        let max_age = Duration::days(1);
+        let max_age = Duration::seconds(NONCE_COOKIE_MAX_AGE);
+        let expires_at = OffsetDateTime::now_utc() + Duration::seconds(NONCE_COOKIE_MAX_AGE);
 
-        let cookie = Cookie::build(("expected_nonce", hashed_nonce))
+        let cookie = Cookie::build((NONCE_COOKIE_NAME, hashed_nonce))
             .path("/")
             .secure(true)
             .http_only(true)
             .same_site(SameSite::Strict)
             .max_age(max_age)
-            .expires(OffsetDateTime::now_utc() + max_age)
+            .expires(expires_at)
             .build();
 
         jar = jar.add(cookie);
@@ -580,7 +584,7 @@ fn hash_email(email: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn hash_nonce(nonce: &str) -> String {
+pub fn hash_nonce(nonce: &str) -> String {
     let secret_salt = std::env::var("NONCE_SALT").expect("NONCE_SALT must be set in .env");
     let mut hasher = Sha256::new();
     hasher.update(nonce.as_bytes());
@@ -668,35 +672,35 @@ async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
 }
 
 fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
-    let idinfo_nonce = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
+    let hashed_nonce_idinfo = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
 
-    println!("idinfo_nonce: {:?}", idinfo_nonce);
+    println!("idinfo_nonce: {:?}", hashed_nonce_idinfo);
 
     if let Some(jar) = jar {
-        if let Some(expected_nonce) = jar.get("expected_nonce") {
+        if let Some(hashed_nonce_cookie) = jar.get(NONCE_COOKIE_NAME) {
             println!(
-                "expected_nonce(hashed) from header: {:?}, hashed idinfo.nonce: {:?}",
-                expected_nonce.to_string(),
-                idinfo_nonce
+                "hashed_nonce from header: {:?}, hashed idinfo.nonce: {:?}",
+                hashed_nonce_cookie.to_string(),
+                hashed_nonce_idinfo
             );
-            if expected_nonce.to_string() != idinfo_nonce {
+            if hashed_nonce_cookie.to_string() != hashed_nonce_idinfo {
                 let message = Error {
                     error: "Invalid nonce".to_string(),
                 };
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
             }
         } else {
-            println!("expected_nonce(hashed) not found in header");
+            println!("hashed_nonce not found in header");
 
             let message = Error {
-                error: "expected_nonce not found".to_string(),
+                error: "hashed_nonce not found".to_string(),
             };
             return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
         }
     }
 
     let message = Error {
-        error: "expected_nonce not found".to_string(),
+        error: "hashed_nonce not found".to_string(),
     };
     Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
 
