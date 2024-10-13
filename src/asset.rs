@@ -10,6 +10,12 @@ fn get_routes() -> Vec<(&'static str, &'static str, &'static str, &'static str)>
     // vec of file paths, routes, tags, and descriptions
     vec![
         (
+            "assets/web_dark_rd_na@1x.png",
+            "/google_oauth2.png",
+            "image",
+            "Google OAuth icon",
+        ),
+        (
             "assets/dog_meme.png",
             "/secret1.png",
             "image",

@@ -66,7 +66,7 @@ async fn login(
     body: Bytes,
 ) -> impl IntoApiResponse {
     let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
-    // println!("form_data: {:?}", form_data);
+    println!("form_data: {:?}", form_data);
     let jwt = form_data.credential.unwrap();
     println!("jwt: {:?}", jwt);
 
@@ -698,7 +698,7 @@ fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCo
     let message = Error {
         error: "expected_nonce not found".to_string(),
     };
-    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
+    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
 
     // Ok(())
 }
