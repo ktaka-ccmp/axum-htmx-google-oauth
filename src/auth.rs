@@ -552,7 +552,7 @@ async fn mutate_session(
     }
 }
 
-pub async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
+pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
     let session = state
         .cache
         .create_session(user.id.unwrap(), &user.email)
@@ -609,7 +609,7 @@ fn hash_email(email: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn hash_nonce(nonce: &str) -> String {
+pub(crate) fn hash_nonce(nonce: &str) -> String {
     let secret_salt = std::env::var("NONCE_SALT").expect("NONCE_SALT must be set in .env");
     let mut hasher = Sha256::new();
     hasher.update(nonce.as_bytes());
