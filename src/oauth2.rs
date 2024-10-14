@@ -1,18 +1,16 @@
 use aide::{
     axum::{routing::get_with, ApiRouter, IntoApiResponse},
-    NoApi, OperationOutput,
+    OperationOutput,
 };
 
 use async_session::{MemoryStore, Session, SessionStore};
 use axum::{
-    async_trait,
-    extract::{Form, FromRef, FromRequestParts, Query, State},
+    extract::{Form, FromRef, Query, State},
     http::{header::SET_COOKIE, HeaderMap},
     response::{IntoResponse, Redirect, Response},
-    RequestPartsExt,
 };
-use axum_extra::{headers, typed_header::TypedHeaderRejectionReason, TypedHeader};
-use http::{header, request::Parts, StatusCode};
+use axum_extra::{headers, TypedHeader};
+use http::StatusCode;
 
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -290,7 +288,7 @@ async fn google_auth(
         .map(char::from)
         .collect::<String>();
 
-    let expires_at = Utc::now() + Duration::seconds(CSRF_COOKIE_MAX_AGE);
+    let expires_at = Utc::now() + Duration::seconds(*CSRF_COOKIE_MAX_AGE);
 
     let user_agent = headers
         .get(axum::http::header::USER_AGENT)
@@ -356,18 +354,18 @@ async fn google_auth(
         CSRF_COOKIE_NAME.to_string(),
         csrf_id.unwrap_or_default(),
         expires_at,
-        CSRF_COOKIE_MAX_AGE,
+        *CSRF_COOKIE_MAX_AGE,
     )?;
 
     let hashed_nonce = hash_nonce(nonce.as_str());
-    let expires_at = Utc::now() + Duration::seconds(NONCE_COOKIE_MAX_AGE);
+    let expires_at = Utc::now() + Duration::seconds(*NONCE_COOKIE_MAX_AGE);
 
     header_set_cookie(
         &mut headers,
         NONCE_COOKIE_NAME.to_string(),
         hashed_nonce,
         expires_at,
-        NONCE_COOKIE_MAX_AGE,
+        *NONCE_COOKIE_MAX_AGE,
     )?;
 
     Ok((headers, Redirect::to(&auth_url)))

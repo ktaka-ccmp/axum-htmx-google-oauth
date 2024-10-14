@@ -308,8 +308,8 @@ async fn auth_navbar(
         let hashed_nonce = hash_nonce(nonce.as_str());
 
         let mut jar = CookieJar::new();
-        let max_age = Duration::seconds(NONCE_COOKIE_MAX_AGE);
-        let expires_at = OffsetDateTime::now_utc() + Duration::seconds(NONCE_COOKIE_MAX_AGE);
+        let max_age = Duration::seconds(*NONCE_COOKIE_MAX_AGE);
+        let expires_at = OffsetDateTime::now_utc() + max_age;
 
         let cookie = Cookie::build((NONCE_COOKIE_NAME, hashed_nonce))
             .path("/")
@@ -507,10 +507,7 @@ async fn mutate_session(
     state: Arc<AppState>,
 ) -> Result<CookieJar, Error> {
     let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
-    let max_age = std::env::var("SESSION_MAX_AGE")
-        .expect("SESSION_MAX_AGE must be set")
-        .parse::<i64>()
-        .expect("SESSION_MAX_AGE must be an integer");
+    let max_age = *SESSION_COOKIE_MAX_AGE;
 
     match cookiejar {
         None => Err(Error {
@@ -566,11 +563,7 @@ pub async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
 }
 
 fn new_cookie(session: &Session) -> CookieJar {
-    let max_age_sec = std::env::var("SESSION_MAX_AGE")
-        .expect("SESSION_MAX_AGE must be set")
-        .parse::<i64>()
-        .expect("SESSION_MAX_AGE must be an integer");
-    let max_age = Duration::seconds(SESSION_COOKIE_MAX_AGE);
+    let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
 
     let expires = OffsetDateTime::now_utc() + max_age;
 
