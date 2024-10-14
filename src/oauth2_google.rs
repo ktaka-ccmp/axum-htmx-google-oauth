@@ -499,7 +499,16 @@ async fn authorized(
         }
     };
 
-    let jar = new_session(user, state.crate_app_state).await;
+    let jar = match new_session(user, state.crate_app_state).await {
+        Ok(jar) => jar,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error creating session: {:?}", e),
+            };
+            println!("{}", message.error);
+            return Err(AppError::AuthError(message.error));
+        }
+    };
 
     Ok((jar, Redirect::to("/oauth2/google/popup_close")))
 }
@@ -663,7 +672,6 @@ struct AuthRedirect;
 
 impl IntoResponse for AuthRedirect {
     fn into_response(self) -> Response {
-        // Redirect::temporary("/auth/google").into_response()
         Redirect::temporary("/").into_response()
     }
 }

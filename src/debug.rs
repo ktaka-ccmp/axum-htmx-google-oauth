@@ -11,9 +11,8 @@ use axum_extra::extract::cookie::CookieJar;
 
 use askama_axum::Template;
 
-use super::settings::SESSION_COOKIE_NAME;
 use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
-
+use super::settings::SESSION_COOKIE_NAME;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()

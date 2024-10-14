@@ -26,16 +26,10 @@ use crate::models::{Error, Session, User};
 use crate::user::get_user_by_id;
 use crate::AppState;
 
-use super::settings::SESSION_COOKIE_MAX_AGE;
-use super::settings::SESSION_COOKIE_NAME;
-
-use super::settings::CSRF_TOKEN_NAME;
-use super::settings::USER_TOKEN_NAME;
-
-use crate::settings::NONCE_COOKIE_MAX_AGE;
-use crate::settings::NONCE_COOKIE_NAME;
-
-use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
+use super::settings::{
+    CSRF_TOKEN_NAME, GOOGLE_OAUTH2_CLIENT_ID, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME,
+    SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME, USER_TOKEN_NAME,
+};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
@@ -458,7 +452,10 @@ async fn mutate_session(
                 );
 
                 match get_user_by_id(&old_session.unwrap().user_id, &state.pool).await {
-                    Ok(Some(user)) => Ok(new_session(user, state).await),
+                    Ok(Some(user)) => match new_session(user, state).await {
+                        Ok(new_jar) => Ok(new_jar),
+                        Err(e) => Err(e),
+                    },
                     Ok(None) => Err(Error {
                         error: "User not found".to_string(),
                     }),
@@ -474,17 +471,24 @@ async fn mutate_session(
     }
 }
 
-pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
-    let session = state
+pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> Result<CookieJar, Error> {
+    let session = match state
         .cache
         .create_session(user.id.unwrap(), &user.email)
         .await
-        .unwrap();
+    {
+        Ok(session) => session,
+        Err(e) => {
+            return Err(Error {
+                error: format!("Error creating session: {}", e),
+            });
+        }
+    };
 
     new_cookie(&session)
 }
 
-fn new_cookie(session: &Session) -> CookieJar {
+fn new_cookie(session: &Session) -> Result<CookieJar, Error> {
     let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
 
     let expires = OffsetDateTime::now_utc() + max_age;
@@ -522,7 +526,7 @@ fn new_cookie(session: &Session) -> CookieJar {
         .expires(expires)
         .build();
 
-    jar.add(cookie)
+    Ok(jar.add(cookie))
 }
 
 fn hash_email(email: &str) -> String {

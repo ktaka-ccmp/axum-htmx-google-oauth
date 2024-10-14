@@ -12,14 +12,13 @@ use serde::Deserialize;
 use super::auth::hash_nonce;
 use super::auth::new_session;
 use super::idtoken::verify_idtoken;
-use super::idtoken::TokenVerificationError;
 
 use crate::models::{Error, IdInfo};
 use crate::user::get_or_create_user;
 use crate::AppState;
 
-use super::settings::NONCE_COOKIE_NAME;
 use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
+use super::settings::NONCE_COOKIE_NAME;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
@@ -44,109 +43,124 @@ async fn authorized(
     let jwt = form_data.credential.unwrap();
     println!("jwt: {:?}", jwt);
 
-    if let Ok(idinfo) = verify_token(jwt).await {
-        // let _ = verify_nonce(&header, &idinfo);
-        let _ = verify_nonce(jar.clone(), &idinfo);
-        // println!("idinfo: {:?}", idinfo);
-
-        let user_data = crate::models::User {
-            id: None,
-            sub: idinfo.sub.clone(),
-            email: idinfo.email.clone(),
-            name: idinfo.name.clone(),
-            picture: idinfo.picture.clone(),
-            enabled: Some(true),
-            admin: Some(false),
-        };
-
-        match get_or_create_user(state.pool.clone(), user_data).await {
-            Ok(user) => {
-                let message = serde_json::json!({
-                    "message": "Created user",
-                    "user": user.email,
-                });
-
-                let jar = new_session(user, state).await;
-
-                // Redirect to the original page if state is set in the form data.
-                // Otherwise, return the message in JSON format.
-                if let Some(href) = form_data.state {
-                    println!("state: {:?}", href);
-                    let response = Response::builder()
-                        .status(StatusCode::FOUND)
-                        .header(header::LOCATION, href)
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
-                    (jar, response).into_response()
-                } else {
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .header("HX-Trigger", "ReloadNavbar")
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
-                    (jar, response).into_response()
-                }
-            }
-            Err(e) => {
-                let message = Error {
-                    error: format!("Error creating user: {:?}", e),
-                };
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
-            }
-        }
-    } else {
-        let message = Error {
-            error: "Error verifying token".to_string(),
-        };
-        (StatusCode::UNAUTHORIZED, Json(message)).into_response()
-    }
-}
-
-async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
     let idinfo = match verify_idtoken(jwt, GOOGLE_OAUTH2_CLIENT_ID.to_string()).await {
         Ok(idinfo) => idinfo,
         Err(err) => {
             println!("Error: {:?}", err);
-            return Err(err);
+            let message = Error {
+                error: "Error verifying token".to_string(),
+            };
+            return (StatusCode::UNAUTHORIZED, Json(message)).into_response();
         }
     };
-    println!("idinfo: {:?}", idinfo);
-    Ok(idinfo)
+
+    match verify_nonce(jar.clone(), &idinfo) {
+        Ok(_) => (),
+        Err((status, message)) => {
+            println!("Error: {:?}", message);
+            return (status, message).into_response();
+        }
+    };
+
+    // println!("idinfo: {:?}", idinfo);
+
+    let user_data = crate::models::User {
+        id: None,
+        sub: idinfo.sub.clone(),
+        email: idinfo.email.clone(),
+        name: idinfo.name.clone(),
+        picture: idinfo.picture.clone(),
+        enabled: Some(true),
+        admin: Some(false),
+    };
+
+    let user = match get_or_create_user(state.pool.clone(), user_data).await {
+        Ok(user) => user,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error creating user: {:?}", e),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let user_email = user.email.clone();
+    let jar = match new_session(user, state).await {
+        Ok(jar) => jar,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error creating session: {:?}", e),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
+
+    let message = serde_json::json!({
+        "message": "Created user",
+        "user": user_email,
+    });
+
+    // Redirect to the original page if state is set in the form data.
+    // Otherwise, return the message in JSON format.
+    if let Some(href) = form_data.state {
+        println!("state: {:?}", href);
+        let response = Response::builder()
+            .status(StatusCode::FOUND)
+            .header(header::LOCATION, href)
+            .body(Json(message).into_response().into_body())
+            .unwrap();
+        (jar, response).into_response()
+    } else {
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("HX-Trigger", "ReloadNavbar")
+            .body(Json(message).into_response().into_body())
+            .unwrap();
+        (jar, response).into_response()
+    }
 }
 
 fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
     let hashed_nonce_idinfo = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
-
     println!("idinfo_nonce: {:?}", hashed_nonce_idinfo);
 
-    if let Some(jar) = jar {
-        if let Some(hashed_nonce_cookie) = jar.get(NONCE_COOKIE_NAME) {
-            println!(
-                "hashed_nonce from header: {:?}, hashed idinfo.nonce: {:?}",
-                hashed_nonce_cookie.to_string(),
-                hashed_nonce_idinfo
-            );
-            if hashed_nonce_cookie.to_string() != hashed_nonce_idinfo {
-                let message = Error {
-                    error: "Invalid nonce".to_string(),
-                };
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
-            }
-        } else {
+    let jar = jar.ok_or_else(|| {
+        println!("CookieJar not found");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error {
+                error: "CookieJar not found".to_string(),
+            }),
+        )
+    })?;
+
+    let hashed_nonce_cookie = jar
+        .get(NONCE_COOKIE_NAME)
+        .map(|cookie| cookie.value().to_owned())
+        .ok_or_else(|| {
             println!("hashed_nonce not found in header");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error {
+                    error: "hashed_nonce not found".to_string(),
+                }),
+            )
+        })?;
 
-            let message = Error {
-                error: "hashed_nonce not found".to_string(),
-            };
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
-        }
+    if hashed_nonce_cookie == hashed_nonce_idinfo {
+        Ok(())
+    } else {
+        println!("Invalid nonce");
+        println!(
+            "hashed_nonce from header: {:?}, hashed idinfo.nonce: {:?}",
+            hashed_nonce_cookie, hashed_nonce_idinfo
+        );
+        Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error {
+                error: "Invalid nonce".to_string(),
+            }),
+        ))
     }
-
-    let message = Error {
-        error: "hashed_nonce not found".to_string(),
-    };
-    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
-
-    // Ok(())
 }
