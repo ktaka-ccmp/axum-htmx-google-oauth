@@ -385,37 +385,27 @@ async fn jar_to_session(
     cookiejar: Option<CookieJar>,
     state: Arc<AppState>,
 ) -> Result<Session, Error> {
-    match cookiejar {
-        None => Err(Error {
-            error: "CookieJar not found".to_string(),
-        }),
-        Some(cookiejar) => match cookiejar.get(SESSION_COOKIE_NAME) {
-            None => Err(Error {
-                error: "Session ID not found in CookieJar".to_string(),
-            }),
-            Some(session_id) => {
-                let session = match state.cache.get_session(session_id.value()).await {
-                    Ok(session) => session,
-                    Err(e) => {
-                        return Err(Error {
-                            error: e.to_string(),
-                        })
-                    }
-                };
-                println!("session: {:?}", session);
-                match session {
-                    None => Err(Error {
-                        error: "Session not found".to_string(),
-                    }),
-                    Some(session) => {
-                        println!("session: {:?}", session);
-                        Ok(session)
-                    }
-                }
-                // Ok(session.unwrap())
-            }
-        },
-    }
+    let cookiejar = cookiejar.ok_or_else(|| Error {
+        error: "CookieJar not found".to_string(),
+    })?;
+
+    let session_id = cookiejar.get(SESSION_COOKIE_NAME).ok_or_else(|| Error {
+        error: "Session ID not found in CookieJar".to_string(),
+    })?;
+
+    let session = state
+        .cache
+        .get_session(session_id.value())
+        .await
+        .map_err(|e| Error {
+            error: e.to_string(),
+        })?
+        .ok_or_else(|| Error {
+            error: "Session not found".to_string(),
+        })?;
+
+    println!("session: {:?}", session);
+    Ok(session)
 }
 
 async fn mutate_session(
@@ -425,50 +415,50 @@ async fn mutate_session(
     let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
     let max_age = *SESSION_COOKIE_MAX_AGE;
 
-    match cookiejar {
-        None => Err(Error {
-            error: "CookieJar not found".to_string(),
-        }),
-        Some(cookiejar) => match cookiejar.get(SESSION_COOKIE_NAME) {
-            None => Err(Error {
-                error: "Session ID not found in CookieJar".to_string(),
-            }),
-            Some(session_id) => {
-                let old_session = state.cache.get_session(session_id.value()).await.unwrap();
+    let cookiejar = cookiejar.ok_or_else(|| Error {
+        error: "CookieJar not found".to_string(),
+    })?;
 
-                if old_session.clone().unwrap().email == admin_email {
-                    return Ok(cookiejar);
-                }
+    let session_id = cookiejar.get(SESSION_COOKIE_NAME).ok_or_else(|| Error {
+        error: "Session ID not found in CookieJar".to_string(),
+    })?;
 
-                let age_left = old_session.clone().unwrap().expires - (Utc::now().timestamp());
-                if age_left * 2 > max_age {
-                    println!("Session still has much time: {} seconds left.", age_left);
-                    return Ok(cookiejar);
-                }
+    let old_session = state
+        .cache
+        .get_session(session_id.value())
+        .await
+        .map_err(|e| Error {
+            error: format!("Failed to get session: {}", e),
+        })?
+        .ok_or_else(|| Error {
+            error: "Session not found".to_string(),
+        })?;
 
-                println!(
-                    "Session expires soon in {}. Mutating the session.",
-                    age_left
-                );
-
-                match get_user_by_id(&old_session.unwrap().user_id, &state.pool).await {
-                    Ok(Some(user)) => match new_session(user, state).await {
-                        Ok(new_jar) => Ok(new_jar),
-                        Err(e) => Err(e),
-                    },
-                    Ok(None) => Err(Error {
-                        error: "User not found".to_string(),
-                    }),
-                    Err(e) => {
-                        eprintln!("Error getting user: {}", e);
-                        Err(Error {
-                            error: format!("Error getting user: {}", e),
-                        })
-                    }
-                }
-            }
-        },
+    if old_session.email == admin_email {
+        return Ok(cookiejar);
     }
+
+    let age_left = old_session.expires - Utc::now().timestamp();
+    if age_left * 2 > max_age {
+        println!("Session still has much time: {} seconds left.", age_left);
+        return Ok(cookiejar);
+    }
+
+    println!(
+        "Session expires soon in {} seconds. Mutating the session.",
+        age_left
+    );
+
+    let user = get_user_by_id(&old_session.user_id, &state.pool)
+        .await
+        .map_err(|e| Error {
+            error: format!("Failed to get user: {}", e),
+        })?
+        .ok_or_else(|| Error {
+            error: "User not found".to_string(),
+        })?;
+
+    new_session(user, state).await
 }
 
 pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> Result<CookieJar, Error> {
