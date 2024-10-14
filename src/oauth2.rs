@@ -22,7 +22,6 @@ use chrono::{DateTime, Duration, Utc};
 use rand::{thread_rng, Rng};
 use urlencoding::encode;
 
-// use crate::auth::hash_nonce;
 use super::auth::hash_nonce;
 use super::auth::new_session;
 use super::idtoken::verify_idtoken;
@@ -591,7 +590,6 @@ async fn csrf_checks(
         .to_string();
 
     if user_agent != csrf_data.user_agent {
-        // return Err(anyhow::anyhow!("User agent mismatch").into());
         return Err(AppError::AuthError(("User agent mismatch").to_string()));
     }
     println!("User agent: {:#?}", user_agent);
