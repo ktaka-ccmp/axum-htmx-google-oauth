@@ -22,13 +22,14 @@ use hyper::{header, Response};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::models::{Error, Session, User};
-use crate::user::get_user_by_id;
-use crate::AppState;
-
-use super::settings::{
-    CSRF_TOKEN_NAME, GOOGLE_OAUTH2_CLIENT_ID, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME,
-    SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME, USER_TOKEN_NAME,
+use super::{
+    models::{Error, Session, User},
+    settings::{
+        CSRF_TOKEN_NAME, GOOGLE_OAUTH2_CLIENT_ID, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME,
+        SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME, USER_TOKEN_NAME,
+    },
+    user::get_user_by_id,
+    AppState,
 };
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
@@ -96,7 +97,7 @@ async fn logout(
 async fn refresh_token(
     State(state): State<Arc<AppState>>,
     header: HeaderMap,
-    mut cookiejar: Option<CookieJar>,
+    cookiejar: Option<CookieJar>,
 ) -> impl IntoApiResponse {
     let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
         Ok(session) => session,
@@ -136,42 +137,41 @@ async fn refresh_token(
 
     let _ = user_verify(x_user_token, session.clone()).await;
 
-    match cookiejar {
+    let cookiejar = match cookiejar {
         None => {
             let message = Error {
                 error: "Error: CookieJar not found".to_string(),
             };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
         }
-        Some(ref mut cookiejar) => {
-            let newjar = mutate_session(Some(cookiejar.clone()), state).await;
-            match newjar {
-                Ok(newjar) => {
-                    let message = serde_json::json!({
-                        "ok": true,
-                        "session_id": newjar.get(SESSION_COOKIE_NAME).unwrap().value(),
-                        "csrf_token": newjar.get(CSRF_TOKEN_NAME).unwrap().value(),
-                        "user_token": newjar.get(USER_TOKEN_NAME).unwrap().value(),
-                    });
+        Some(jar) => jar,
+    };
 
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .header("HX-Trigger", "ReloadNavbar")
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
+    match mutate_session(Some(cookiejar.clone()), state).await {
+        Ok(newjar) => {
+            let message = serde_json::json!({
+                "ok": true,
+                "session_id": newjar.get(SESSION_COOKIE_NAME).unwrap().value(),
+                "csrf_token": newjar.get(CSRF_TOKEN_NAME).unwrap().value(),
+                "user_token": newjar.get(USER_TOKEN_NAME).unwrap().value(),
+            });
 
-                    (cookiejar.clone(), response).into_response()
-                }
-                Err(e) => {
-                    let message = Error {
-                        error: format!("Error mutating session: {:?}", e),
-                    };
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
-                }
-            }
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("HX-Trigger", "ReloadNavbar")
+                .body(Json(message).into_response().into_body())
+                .unwrap();
+
+            return (newjar, response).into_response();
         }
-    }
+        Err(e) => {
+            let message = Error {
+                error: format!("Error mutating session: {:?}", e),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+        }
+    };
 }
 
 #[allow(non_snake_case)]
