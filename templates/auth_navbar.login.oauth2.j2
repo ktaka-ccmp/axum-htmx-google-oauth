@@ -32,9 +32,10 @@
                }
 
                // Reload the parent window
-               setTimeout(() => {
-                    window.location.reload();
-               }, 100);  // Wait for 1 second before reloading
+               //               setTimeout(() => {
+               // window.location.reload();
+               htmx.trigger("#auth_navbar", "ReloadNavbar", {});
+               //              }, 100);  // Wait for 1 second before reloading
           }
 
           // Add an unload event listener to handle page navigation

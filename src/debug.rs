@@ -11,6 +11,8 @@ use axum_extra::extract::cookie::CookieJar;
 
 use askama_axum::Template;
 
+use super::settings::SESSION_COOKIE_NAME;
+
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/signin", get_with(signinpage, |op| op.tag("debug")))
@@ -47,38 +49,38 @@ async fn signinpage() -> Html<String> {
 }
 
 async fn me(NoApi(jar): NoApi<CookieJar>) -> impl IntoApiResponse {
-    if let Some(session_id) = jar.get("session_id") {
-        println!("session_id: {}", session_id.value());
+    if let Some(session_id) = jar.get(SESSION_COOKIE_NAME) {
+        println!("{}: {}", SESSION_COOKIE_NAME, session_id.value());
         (
             StatusCode::OK,
             Json(serde_json::json!({
-                "session_id": session_id.value(),
+                SESSION_COOKIE_NAME: session_id.value(),
             })),
         )
     } else {
         (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({
-            "message": "session_id not found in Cookie"})),
+            "message": format!("{} not found in Cookie", SESSION_COOKIE_NAME)})),
         )
     }
 }
 
 async fn me2(jar: Option<CookieJar>) -> impl IntoApiResponse {
     if let Some(jar) = jar {
-        if let Some(session_id) = jar.get("session_id") {
-            println!("session_id: {}", session_id.value());
+        if let Some(session_id) = jar.get(SESSION_COOKIE_NAME) {
+            println!("{}: {}", SESSION_COOKIE_NAME, session_id.value());
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
-                    "session_id": session_id.value(),
+                    SESSION_COOKIE_NAME: session_id.value(),
                 })),
             )
         } else {
             (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
-                "message": "session_id not found in Cookie"})),
+                    "message": format!("{} not found in Cookie", SESSION_COOKIE_NAME)})),
             )
         }
     } else {

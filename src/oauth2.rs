@@ -1,18 +1,16 @@
 use aide::{
     axum::{routing::get_with, ApiRouter, IntoApiResponse},
-    NoApi, OperationOutput,
+    OperationOutput,
 };
 
 use async_session::{MemoryStore, Session, SessionStore};
 use axum::{
-    async_trait,
-    extract::{Form, FromRef, FromRequestParts, Query, State},
+    extract::{Form, FromRef, Query, State},
     http::{header::SET_COOKIE, HeaderMap},
     response::{IntoResponse, Redirect, Response},
-    RequestPartsExt,
 };
-use axum_extra::{headers, typed_header::TypedHeaderRejectionReason, TypedHeader};
-use http::{header, request::Parts, StatusCode};
+use axum_extra::{headers, TypedHeader};
+use http::StatusCode;
 
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -24,20 +22,27 @@ use chrono::{DateTime, Duration, Utc};
 use rand::{thread_rng, Rng};
 use urlencoding::encode;
 
-use crate::AppState as CrateAppState;
+use super::auth::hash_nonce;
+use super::auth::new_session;
+use super::idtoken::verify_idtoken;
+use super::AppState as CrateAppState;
 
-static AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-static TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-static SCOPE: &str = "openid+email+profile";
+use super::models::Error;
+use super::user::{create_user, get_user_by_sub};
 
-// "__Host-" prefix are added to make cookies "host-only".
-static COOKIE_NAME: &str = "__Host-SessionId";
-static CSRF_COOKIE_NAME: &str = "__Host-CsrfId";
-static COOKIE_MAX_AGE: i64 = 600; // 10 minutes
-static CSRF_COOKIE_MAX_AGE: i64 = 20; // 20 seconds
+use super::settings::OAUTH2_AUTH_URL;
+use super::settings::OAUTH2_RESPONSE_MODE;
+use super::settings::OAUTH2_SCOPE;
+use super::settings::OAUTH2_TOKEN_URL;
 
-pub fn create_router(_state: Arc<CrateAppState>) -> ApiRouter {
-    let app_state = app_state_init();
+use super::settings::CSRF_COOKIE_MAX_AGE;
+use super::settings::CSRF_COOKIE_NAME;
+
+use super::settings::NONCE_COOKIE_MAX_AGE;
+use super::settings::NONCE_COOKIE_NAME;
+
+pub fn create_router(crate_app_state: Arc<CrateAppState>) -> ApiRouter {
+    let app_state = app_state_init(crate_app_state);
 
     ApiRouter::new()
         .api_route("/", get_with(google_auth, |op| op.tag("auth")))
@@ -46,13 +51,11 @@ pub fn create_router(_state: Arc<CrateAppState>) -> ApiRouter {
             get_with(get_authorized, |op| op.tag("auth"))
                 .post_with(post_authorized, |op| op.tag("auth")),
         )
-        .api_route("/protected", get_with(protected, |op| op.tag("auth")))
-        .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route("/popup_close", get_with(popup_close, |op| op.tag("auth")))
         .with_state(app_state)
 }
 
-fn app_state_init() -> AppState {
+fn app_state_init(crate_app_state: Arc<CrateAppState>) -> AppState {
     let store = MemoryStore::new();
 
     let oauth2_params = OAuth2Params {
@@ -63,39 +66,56 @@ fn app_state_init() -> AppState {
             "{}/oauth2/google/authorized",
             env::var("ORIGIN_SERVER").expect("Missing ORIGIN_SERVER!")
         ),
-        auth_url: AUTH_URL.to_string(),
-        token_url: TOKEN_URL.to_string(),
+        auth_url: OAUTH2_AUTH_URL.to_string(),
+        token_url: OAUTH2_TOKEN_URL.to_string(),
         response_type: ResponseType::Code.as_str().to_string(),
-        scope: SCOPE.to_string(),
+        scope: OAUTH2_SCOPE.to_string(),
         nonce: None,
         state: None,
         csrf_token: None,
-        // response_mode: Some(ResponseMode::FormPost),
-        response_mode: Some(ResponseMode::Query), // "query",
-        prompt: Some(Prompt::Consent),            // "consent",
-        access_type: Some(AccessType::Online),    // "online",
+        response_mode: Some(
+            OAUTH2_RESPONSE_MODE
+                .parse()
+                .unwrap_or(OAuth2ResponseMode::Query),
+        ),
+        prompt: Some(Prompt::Consent),         // "consent",
+        access_type: Some(AccessType::Online), // "online",
     };
 
     AppState {
         store,
         oauth2_params,
+        crate_app_state,
     }
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-enum ResponseMode {
+enum OAuth2ResponseMode {
     Query,
     Fragment,
     FormPost,
 }
 
-impl ResponseMode {
+impl OAuth2ResponseMode {
     fn as_str(&self) -> &str {
         match self {
             Self::Query => "query",
             Self::Fragment => "fragment",
             Self::FormPost => "form_post",
+        }
+    }
+}
+
+impl std::str::FromStr for OAuth2ResponseMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "query" => Ok(OAuth2ResponseMode::Query),
+            "form_post" => Ok(OAuth2ResponseMode::FormPost),
+            "fragment" => Ok(OAuth2ResponseMode::Fragment),
+            _ => Err(format!("Invalid value for OAuth2ResponseMode: {}", s)),
         }
     }
 }
@@ -183,7 +203,8 @@ struct OAuth2Params {
     nonce: Option<String>,
     state: Option<String>,
     csrf_token: Option<String>,
-    response_mode: Option<ResponseMode>,
+    response_mode: Option<OAuth2ResponseMode>,
+    // response_mode: Option<String>,
     prompt: Option<Prompt>,
     access_type: Option<AccessType>,
 }
@@ -192,6 +213,7 @@ struct OAuth2Params {
 struct AppState {
     store: MemoryStore,
     oauth2_params: OAuth2Params,
+    crate_app_state: Arc<CrateAppState>,
 }
 
 impl FromRef<AppState> for MemoryStore {
@@ -265,7 +287,7 @@ async fn google_auth(
         .map(char::from)
         .collect::<String>();
 
-    let expires_at = Utc::now() + Duration::seconds(CSRF_COOKIE_MAX_AGE);
+    let expires_at = Utc::now() + Duration::seconds(*CSRF_COOKIE_MAX_AGE);
 
     let user_agent = headers
         .get(axum::http::header::USER_AGENT)
@@ -296,7 +318,13 @@ async fn google_auth(
         }
     };
 
-    params.nonce = Some("some_nonce".to_string());
+    let nonce = thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect::<String>();
+
+    params.nonce = Some(nonce.clone());
     params.csrf_token = Some(csrf_token.clone());
     params.state = Some(csrf_token);
 
@@ -325,60 +353,21 @@ async fn google_auth(
         CSRF_COOKIE_NAME.to_string(),
         csrf_id.unwrap_or_default(),
         expires_at,
-        CSRF_COOKIE_MAX_AGE,
+        *CSRF_COOKIE_MAX_AGE,
+    )?;
+
+    let hashed_nonce = hash_nonce(nonce.as_str());
+    let expires_at = Utc::now() + Duration::seconds(*NONCE_COOKIE_MAX_AGE);
+
+    header_set_cookie(
+        &mut headers,
+        NONCE_COOKIE_NAME.to_string(),
+        hashed_nonce,
+        expires_at,
+        *NONCE_COOKIE_MAX_AGE,
     )?;
 
     Ok((headers, Redirect::to(&auth_url)))
-}
-
-async fn protected(NoApi(user): NoApi<User>) -> impl IntoApiResponse {
-    format!("Welcome to the protected area :)\nHere's your info:\n{user:?}")
-}
-
-async fn logout(
-    State(store): State<MemoryStore>,
-    TypedHeader(cookies): TypedHeader<headers::Cookie>,
-) -> Result<impl IntoApiResponse, AppError> {
-    let mut headers = HeaderMap::new();
-    header_set_cookie(
-        &mut headers,
-        COOKIE_NAME.to_string(),
-        "value".to_string(),
-        Utc::now() - Duration::seconds(86400),
-        -86400,
-    )?;
-
-    delete_session_from_store(cookies, COOKIE_NAME.to_string(), &store).await?;
-
-    Ok((headers, Redirect::to("/")))
-}
-
-async fn delete_session_from_store(
-    cookies: headers::Cookie,
-    cookie_name: String,
-    store: &MemoryStore,
-) -> Result<(), AppError> {
-    let cookie = cookies
-        .get(&cookie_name)
-        .ok_or_else(|| AppError::SessionError("No session cookie found".to_string()))?;
-
-    let session = match store
-        .load_session(cookie.to_string())
-        .await
-        .map_err(|e| AppError::SessionError(format!("Failed to load session: {:#?}", e)))?
-    {
-        Some(session) => session,
-        None => {
-            return Err(AppError::SessionError("No session found".to_string()));
-        }
-    };
-
-    store
-        .destroy_session(session)
-        .await
-        .map_err(|e| AppError::SessionError(format!("Failed to destroy session: {:#?}", e)))?;
-
-    Ok(())
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema, Serialize)]
@@ -400,7 +389,8 @@ struct OidcTokenResponse {
 
 async fn post_authorized(
     State(params): State<OAuth2Params>,
-    State(store): State<MemoryStore>,
+    State(state): State<AppState>,
+    // State(store): State<MemoryStore>,
     TypedHeader(cookies): TypedHeader<headers::Cookie>,
     headers: HeaderMap,
     Form(form): Form<AuthRequest>,
@@ -412,15 +402,14 @@ async fn post_authorized(
 
     validate_origin(&headers, &params.auth_url).await?;
     // csrf_checks(cookies.clone(), &store, &query, headers).await?;
-    // delete_session_from_store(cookies, CSRF_COOKIE_NAME.to_string(), &store).await?;
 
-    authorized(form.code.clone(), params, store).await
+    authorized(form.code.clone(), params, state).await
 }
 
 async fn get_authorized(
     Query(query): Query<AuthRequest>,
-    State(store): State<MemoryStore>,
     State(params): State<OAuth2Params>,
+    State(state): State<AppState>,
     TypedHeader(cookies): TypedHeader<headers::Cookie>,
     headers: HeaderMap,
 ) -> Result<impl IntoApiResponse, AppError> {
@@ -430,17 +419,16 @@ async fn get_authorized(
     // println!("Cookies: {:#?}", cookies.get(CSRF_COOKIE_NAME));
 
     validate_origin(&headers, &params.auth_url).await?;
-    csrf_checks(cookies.clone(), &store, &query, headers).await?;
-    delete_session_from_store(cookies, CSRF_COOKIE_NAME.to_string(), &store).await?;
+    csrf_checks(cookies.clone(), &state.store, &query, headers).await?;
 
-    authorized(query.code.clone(), params, store).await
+    authorized(query.code.clone(), params, state).await
 }
 
 async fn authorized(
     code: String,
     params: OAuth2Params,
-    store: MemoryStore,
-) -> Result<(HeaderMap, Redirect), AppError> {
+    state: AppState,
+) -> Result<impl IntoApiResponse, AppError> {
     let mut headers = HeaderMap::new();
     header_set_cookie(
         &mut headers,
@@ -450,25 +438,81 @@ async fn authorized(
         -86400,
     )?;
 
+    let client_id = params.client_id.clone();
     let (access_token, id_token) = exchange_code_for_token(params, code).await?;
     println!("Access Token: {:#?}", access_token);
     println!("ID Token: {:#?}", id_token);
 
-    let user_data = fetch_user_data_from_google(access_token).await?;
+    let idinfo = match verify_idtoken(id_token, client_id).await {
+        Ok(idinfo) => {
+            // let _ = verify_nonce(&header, &idinfo);
+            // let _ = verify_nonce(jar.clone(), &idinfo);
 
-    let max_age = COOKIE_MAX_AGE;
-    let expires_at = Utc::now() + Duration::seconds(max_age);
-    let session_id = create_and_store_session(user_data, &store, expires_at).await?;
-    header_set_cookie(
-        &mut headers,
-        COOKIE_NAME.to_string(),
-        session_id,
-        expires_at,
-        max_age,
-    )?;
-    // println!("Headers: {:#?}", headers);
+            println!("idinfo: {:?}", idinfo);
+            idinfo
+        }
+        Err(e) => {
+            let message = Error {
+                error: format!("Error verifying token: {:?}", e),
+            };
+            println!("{}", message.error);
+            return Err(AppError::AuthError(message.error));
+        }
+    };
 
-    Ok((headers, Redirect::to("/oauth2/google/popup_close")))
+    let user_info = fetch_user_data_from_google(access_token).await?;
+    println!("User Info: {:#?}", user_info);
+
+    if idinfo.sub != user_info.id
+        || idinfo.email != user_info.email
+        || idinfo.name != user_info.name
+        || idinfo.picture != Some(user_info.picture.clone())
+    {
+        let message = Error {
+            error: format!("IdToken/UserInfo mismatch: {:?}", idinfo),
+        };
+        println!("{}", message.error);
+        return Err(AppError::AuthError(message.error));
+    }
+
+    let user_data = crate::models::User {
+        id: None,
+        sub: user_info.id.clone(),
+        email: user_info.email.clone(),
+        name: user_info.name.clone(),
+        picture: Some(user_info.picture.clone()),
+        enabled: Some(true),
+        admin: Some(false),
+    };
+
+    let user = match get_or_create_user(state.clone(), user_data.clone()).await {
+        Ok(user) => user,
+        Err(e) => {
+            let message = Error {
+                error: format!("Error getting/creating user: {:?}", e),
+            };
+            println!("{}", message.error);
+            return Err(AppError::AuthError(message.error));
+        }
+    };
+
+    let jar = new_session(user, state.crate_app_state).await;
+
+    Ok((jar, Redirect::to("/oauth2/google/popup_close")))
+}
+
+async fn get_or_create_user(
+    state: AppState,
+    user_data: crate::models::User,
+) -> Result<crate::models::User, sqlx::Error> {
+    match get_user_by_sub(&user_data.sub, &state.crate_app_state.pool.clone()).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => match create_user(user_data, &state.crate_app_state.pool.clone()).await {
+            Ok(user) => Ok(user),
+            Err(e) => Err(e),
+        },
+        Err(e) => Err(e),
+    }
 }
 
 async fn validate_origin(headers: &HeaderMap, auth_url: &str) -> Result<(), AppError> {
@@ -506,7 +550,15 @@ async fn csrf_checks(
         .await
         .map_err(|e| AppError::SessionError(format!("Failed to load session: {:#?}", e)))?
     {
-        Some(session) => session,
+        Some(session) => {
+            // Taken from delete_session_from_store
+            // if session relaed to csrf_id is found, destroy it immediately, since it's a one-time use.
+            store.destroy_session(session.clone()).await.map_err(|e| {
+                AppError::SessionError(format!("Failed to destroy session: {:#?}", e))
+            })?;
+
+            session
+        }
         None => {
             return Err(AppError::AuthError("No CSRF session found".to_string()));
         }
@@ -538,7 +590,6 @@ async fn csrf_checks(
         .to_string();
 
     if user_agent != csrf_data.user_agent {
-        // return Err(anyhow::anyhow!("User agent mismatch").into());
         return Err(AppError::AuthError(("User agent mismatch").to_string()));
     }
     println!("User agent: {:#?}", user_agent);
@@ -566,31 +617,6 @@ fn header_set_cookie(
     Ok(headers)
 }
 
-async fn create_and_store_session(
-    user_data: User,
-    store: &MemoryStore,
-    expires_at: DateTime<Utc>,
-) -> Result<String, AppError> {
-    let mut session = Session::new();
-    session
-        .insert("user", &user_data)
-        .map_err(|e| AppError::SessionError(format!("Failed to insert user data: {:#?}", e)))?;
-
-    session.set_expiry(expires_at);
-    println!("Session: {:#?}", session);
-
-    let session_id = match store
-        .store_session(session)
-        .await
-        .map_err(|e| AppError::SessionError(format!("Failed to store session: {:#?}", e)))?
-    {
-        Some(id) => id,
-        None => return Err(AppError::SessionError("No session ID found".to_string())),
-    };
-
-    Ok(session_id)
-}
-
 async fn fetch_user_data_from_google(access_token: String) -> Result<User, AppError> {
     let response = reqwest::Client::new()
         .get("https://www.googleapis.com/userinfo/v2/me")
@@ -607,7 +633,7 @@ async fn fetch_user_data_from_google(access_token: String) -> Result<User, AppEr
     let user_data: User = serde_json::from_str(&response_body)
         .map_err(|e| AppError::SerializationError(e.to_string()))?;
 
-    println!("User data: {:#?}", user_data);
+    // println!("User data: {:#?}", user_data);
 
     Ok(user_data)
 }
@@ -660,49 +686,6 @@ impl OperationOutput for AuthRedirect {
         _operation: &mut aide::openapi::Operation,
     ) -> Option<aide::openapi::Response> {
         Some(aide::openapi::Response::default())
-    }
-}
-
-// Removed conflicting implementation of IntoApiResponse for AuthRedirect
-
-#[async_trait]
-impl<S> FromRequestParts<S> for User
-where
-    MemoryStore: FromRef<S>,
-    S: Send + Sync,
-{
-    // If anything goes wrong or no session is found, redirect to the auth page
-    type Rejection = AuthRedirect;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let store = MemoryStore::from_ref(state);
-
-        println!("Retrieving cookies");
-        let cookies = parts
-            .extract::<TypedHeader<headers::Cookie>>()
-            .await
-            .map_err(|e| match *e.name() {
-                header::COOKIE => match e.reason() {
-                    TypedHeaderRejectionReason::Missing => AuthRedirect,
-                    _ => panic!("unexpected error getting Cookie header(s): {e}"),
-                },
-                _ => panic!("unexpected error getting cookies: {e}"),
-            })?;
-        // println!("Cookies: {:#?}", cookies);
-        let session_cookie = cookies.get(COOKIE_NAME).ok_or(AuthRedirect)?;
-
-        // Retrieve session from store
-        let session = store
-            .load_session(session_cookie.to_string())
-            .await
-            .unwrap()
-            .ok_or(AuthRedirect)?;
-
-        // println!("Loaded Session: {:#?}", session);
-        // Retrieve user data from session
-        let user = session.get::<User>("user").ok_or(AuthRedirect)?;
-
-        Ok(user)
     }
 }
 

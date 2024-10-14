@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use rand::{thread_rng, Rng};
 use redis;
-use redis::{AsyncCommands, Client as RedisClient};
+use redis::AsyncCommands;
 use sqlx::Pool;
 use std::sync::Arc;
 use thiserror::Error;
@@ -10,6 +10,8 @@ use thiserror::Error;
 
 use crate::models::Session;
 use crate::DB;
+
+use super::settings::SESSION_COOKIE_MAX_AGE;
 
 #[derive(Error, Debug)]
 pub enum CacheStoreError {
@@ -60,11 +62,7 @@ impl CacheStore for SqlCacheStore {
     }
 
     async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
-        let max_age_sec = std::env::var("SESSION_MAX_AGE")
-            .expect("SESSION_MAX_AGE must be set")
-            .parse::<i64>()
-            .expect("SESSION_MAX_AGE must be an integer");
-        let max_age = Duration::seconds(max_age_sec);
+        let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
 
         let session_id = thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
@@ -114,7 +112,7 @@ impl CacheStore for SqlCacheStore {
     }
 }
 struct RedisCacheStore {
-    client: RedisClient,
+    client: redis::Client,
 }
 
 #[async_trait]
@@ -139,11 +137,7 @@ impl CacheStore for RedisCacheStore {
     }
 
     async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
-        let max_age_sec = std::env::var("SESSION_MAX_AGE")
-            .expect("SESSION_MAX_AGE must be set")
-            .parse::<i64>()
-            .expect("SESSION_MAX_AGE must be an integer");
-        let max_age = Duration::seconds(max_age_sec);
+        let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
 
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         let session_id = thread_rng()
@@ -166,7 +160,7 @@ impl CacheStore for RedisCacheStore {
             expires: expires.timestamp(),
         };
 
-        conn.set_ex(
+        conn.set_ex::<String, String, ()>(
             format!("session:{}", session_id),
             serde_json::to_string(&session)?,
             3600,
@@ -178,7 +172,7 @@ impl CacheStore for RedisCacheStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<(), CacheStoreError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.del(format!("session:{}", session_id)).await?;
+        conn.del::<String, ()>(format!("session:{}", session_id)).await?;
         Ok(())
     }
 
@@ -194,7 +188,7 @@ pub async fn get_cache_store() -> Result<Arc<dyn CacheStore + Send + Sync>, Cach
     match cache_store.as_str() {
         "redis" => {
             let redis_url = std::env::var("CACHE_REDIS_URL")?;
-            let client = RedisClient::open(redis_url)?;
+            let client = redis::Client::open(redis_url)?;
             Ok(Arc::new(RedisCacheStore { client }))
         }
         _ => {
