@@ -1,7 +1,4 @@
-use aide::axum::{
-    routing::{get_with, post_with},
-    ApiRouter, IntoApiResponse,
-};
+use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
     extract::State,
@@ -21,32 +18,22 @@ use chrono::Utc;
 use rand::{thread_rng, Rng};
 use std::sync::Arc;
 
-use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use sqlx::Pool;
 
-use crate::idtoken::verify_idtoken;
-use crate::idtoken::TokenVerificationError;
-use crate::models::{Error, IdInfo, Session, User};
-use crate::user::{create_user, get_user_by_id, get_user_by_sub};
-use crate::{AppState, DB};
-// use crate::middleware::check_hx_request;
-// use std::env;
-
-use super::settings::SESSION_COOKIE_MAX_AGE;
-use super::settings::SESSION_COOKIE_NAME;
-
-use super::settings::CSRF_TOKEN_NAME;
-use super::settings::USER_TOKEN_NAME;
-
-use crate::settings::NONCE_COOKIE_MAX_AGE;
-use crate::settings::NONCE_COOKIE_NAME;
+use super::{
+    models::{Error, Session, User},
+    settings::{
+        CSRF_TOKEN_NAME, GOOGLE_OAUTH2_CLIENT_ID, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME,
+        ORIGIN_SERVER, SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME, USER_TOKEN_NAME,
+    },
+    user::get_user_by_id,
+    AppState,
+};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
-        .api_route("/login", post_with(login, |op| op.tag("auth")))
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
         .api_route(
             "/refresh_token",
@@ -61,71 +48,6 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
         )
         // .route_layer(axum::middleware::from_fn(check_hx_request))
         .with_state(state)
-}
-
-#[derive(Debug, Deserialize)]
-struct FormData {
-    credential: Option<String>,
-    state: Option<String>,
-}
-
-async fn login(
-    State(state): State<Arc<AppState>>,
-    jar: Option<CookieJar>,
-    body: Bytes,
-) -> impl IntoApiResponse {
-    let form_data: FormData = serde_urlencoded::from_bytes(&body).unwrap();
-    println!("form_data: {:?}", form_data);
-    let jwt = form_data.credential.unwrap();
-    println!("jwt: {:?}", jwt);
-
-    if let Ok(idinfo) = verify_token(jwt).await {
-        // let _ = verify_nonce(&header, &idinfo);
-        let _ = verify_nonce(jar.clone(), &idinfo);
-        // println!("idinfo: {:?}", idinfo);
-
-        match get_or_create_user(&idinfo, state.pool.clone()).await {
-            Ok(user) => {
-                let message = serde_json::json!({
-                    "message": "Created user",
-                    "user": user.email,
-                });
-
-                let jar = new_session(user, state).await;
-
-                // Redirect to the original page if state is set in the form data.
-                // Otherwise, return the message in JSON format.
-                if let Some(href) = form_data.state {
-                    println!("state: {:?}", href);
-                    let response = Response::builder()
-                        .status(StatusCode::FOUND)
-                        .header(header::LOCATION, href)
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
-                    (jar, response).into_response()
-                } else {
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .header("HX-Trigger", "ReloadNavbar")
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
-                    (jar, response).into_response()
-                }
-            }
-            Err(e) => {
-                let message = Error {
-                    error: format!("Error creating user: {:?}", e),
-                };
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
-            }
-        }
-    } else {
-        let message = Error {
-            error: "Error verifying token".to_string(),
-        };
-        (StatusCode::UNAUTHORIZED, Json(message)).into_response()
-    }
 }
 
 async fn logout(
@@ -175,7 +97,7 @@ async fn logout(
 async fn refresh_token(
     State(state): State<Arc<AppState>>,
     header: HeaderMap,
-    mut cookiejar: Option<CookieJar>,
+    cookiejar: Option<CookieJar>,
 ) -> impl IntoApiResponse {
     let session = match jar_to_session(cookiejar.clone(), state.clone()).await {
         Ok(session) => session,
@@ -215,40 +137,39 @@ async fn refresh_token(
 
     let _ = user_verify(x_user_token, session.clone()).await;
 
-    match cookiejar {
+    let cookiejar = match cookiejar {
         None => {
             let message = Error {
                 error: "Error: CookieJar not found".to_string(),
             };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
         }
-        Some(ref mut cookiejar) => {
-            let newjar = mutate_session(Some(cookiejar.clone()), state).await;
-            match newjar {
-                Ok(newjar) => {
-                    let message = serde_json::json!({
-                        "ok": true,
-                        "session_id": newjar.get(SESSION_COOKIE_NAME).unwrap().value(),
-                        "csrf_token": newjar.get(CSRF_TOKEN_NAME).unwrap().value(),
-                        "user_token": newjar.get(USER_TOKEN_NAME).unwrap().value(),
-                    });
+        Some(jar) => jar,
+    };
 
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .header("HX-Trigger", "ReloadNavbar")
-                        .body(Json(message).into_response().into_body())
-                        .unwrap();
+    match mutate_session(Some(cookiejar.clone()), state).await {
+        Ok(newjar) => {
+            let message = serde_json::json!({
+                "ok": true,
+                "session_id": newjar.get(SESSION_COOKIE_NAME).unwrap().value(),
+                "csrf_token": newjar.get(CSRF_TOKEN_NAME).unwrap().value(),
+                "user_token": newjar.get(USER_TOKEN_NAME).unwrap().value(),
+            });
 
-                    (cookiejar.clone(), response).into_response()
-                }
-                Err(e) => {
-                    let message = Error {
-                        error: format!("Error mutating session: {:?}", e),
-                    };
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
-                }
-            }
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("HX-Trigger", "ReloadNavbar")
+                .body(Json(message).into_response().into_body())
+                .unwrap();
+
+            (newjar, response).into_response()
+        }
+        Err(e) => {
+            let message = Error {
+                error: format!("Error mutating session: {:?}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
         }
     }
 }
@@ -290,11 +211,7 @@ async fn auth_navbar(
     // For unauthenticated users, return the menu.login component.
     // fn auth_navbar_login() -> Html<String> {
     fn auth_navbar_login() -> impl IntoApiResponse {
-        let client_id =
-            std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
-        let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
-
-        let login_url = origin_server + "/auth/login";
+        let login_url = ORIGIN_SERVER.clone() + "/signin/w/google/authorized";
         let icon_url = "/asset/icon.png".to_string();
         let refresh_token_url = "/auth/refresh_token".to_string();
         let mutate_user_url = "/auth/mutate_user".to_string();
@@ -323,7 +240,7 @@ async fn auth_navbar(
         jar = jar.add(cookie);
 
         let template = NavbarLoginTemplate {
-            client_id,
+            client_id: GOOGLE_OAUTH2_CLIENT_ID.to_string(),
             login_url,
             icon_url,
             refresh_token_url,
@@ -456,10 +373,7 @@ async fn get_current_user_from_jar(
     match session_result {
         Ok(session) => {
             let user_result = get_user_by_id(&session.user_id, &state.pool).await;
-            match user_result {
-                Ok(user) => user,
-                Err(_) => None,
-            }
+            user_result.unwrap_or_default()
         }
         Err(_) => None,
     }
@@ -469,37 +383,27 @@ async fn jar_to_session(
     cookiejar: Option<CookieJar>,
     state: Arc<AppState>,
 ) -> Result<Session, Error> {
-    match cookiejar {
-        None => Err(Error {
-            error: "CookieJar not found".to_string(),
-        }),
-        Some(cookiejar) => match cookiejar.get(SESSION_COOKIE_NAME) {
-            None => Err(Error {
-                error: "Session ID not found in CookieJar".to_string(),
-            }),
-            Some(session_id) => {
-                let session = match state.cache.get_session(session_id.value()).await {
-                    Ok(session) => session,
-                    Err(e) => {
-                        return Err(Error {
-                            error: e.to_string(),
-                        })
-                    }
-                };
-                println!("session: {:?}", session);
-                match session {
-                    None => Err(Error {
-                        error: "Session not found".to_string(),
-                    }),
-                    Some(session) => {
-                        println!("session: {:?}", session);
-                        Ok(session)
-                    }
-                }
-                // Ok(session.unwrap())
-            }
-        },
-    }
+    let cookiejar = cookiejar.ok_or_else(|| Error {
+        error: "CookieJar not found".to_string(),
+    })?;
+
+    let session_id = cookiejar.get(SESSION_COOKIE_NAME).ok_or_else(|| Error {
+        error: "Session ID not found in CookieJar".to_string(),
+    })?;
+
+    let session = state
+        .cache
+        .get_session(session_id.value())
+        .await
+        .map_err(|e| Error {
+            error: e.to_string(),
+        })?
+        .ok_or_else(|| Error {
+            error: "Session not found".to_string(),
+        })?;
+
+    println!("session: {:?}", session);
+    Ok(session)
 }
 
 async fn mutate_session(
@@ -509,60 +413,70 @@ async fn mutate_session(
     let admin_email = std::env::var("ADMIN_EMAIL").expect("ADMIN_EMAIL must be set");
     let max_age = *SESSION_COOKIE_MAX_AGE;
 
-    match cookiejar {
-        None => Err(Error {
-            error: "CookieJar not found".to_string(),
-        }),
-        Some(cookiejar) => match cookiejar.get(SESSION_COOKIE_NAME) {
-            None => Err(Error {
-                error: "Session ID not found in CookieJar".to_string(),
-            }),
-            Some(session_id) => {
-                let old_session = state.cache.get_session(session_id.value()).await.unwrap();
+    let cookiejar = cookiejar.ok_or_else(|| Error {
+        error: "CookieJar not found".to_string(),
+    })?;
 
-                if old_session.clone().unwrap().email == admin_email {
-                    return Ok(cookiejar);
-                }
+    let session_id = cookiejar.get(SESSION_COOKIE_NAME).ok_or_else(|| Error {
+        error: "Session ID not found in CookieJar".to_string(),
+    })?;
 
-                let age_left = old_session.clone().unwrap().expires - (Utc::now().timestamp());
-                if age_left * 2 > max_age {
-                    println!("Session still has much time: {} seconds left.", age_left);
-                    return Ok(cookiejar);
-                }
+    let old_session = state
+        .cache
+        .get_session(session_id.value())
+        .await
+        .map_err(|e| Error {
+            error: format!("Failed to get session: {}", e),
+        })?
+        .ok_or_else(|| Error {
+            error: "Session not found".to_string(),
+        })?;
 
-                println!(
-                    "Session expires soon in {}. Mutating the session.",
-                    age_left
-                );
-
-                match get_user_by_id(&old_session.unwrap().user_id, &state.pool).await {
-                    Ok(Some(user)) => Ok(new_session(user, state).await),
-                    Ok(None) => Err(Error {
-                        error: "User not found".to_string(),
-                    }),
-                    Err(e) => {
-                        eprintln!("Error getting user: {}", e);
-                        Err(Error {
-                            error: format!("Error getting user: {}", e),
-                        })
-                    }
-                }
-            }
-        },
+    if old_session.email == admin_email {
+        return Ok(cookiejar);
     }
+
+    let age_left = old_session.expires - Utc::now().timestamp();
+    if age_left * 2 > max_age {
+        println!("Session still has much time: {} seconds left.", age_left);
+        return Ok(cookiejar);
+    }
+
+    println!(
+        "Session expires soon in {} seconds. Mutating the session.",
+        age_left
+    );
+
+    let user = get_user_by_id(&old_session.user_id, &state.pool)
+        .await
+        .map_err(|e| Error {
+            error: format!("Failed to get user: {}", e),
+        })?
+        .ok_or_else(|| Error {
+            error: "User not found".to_string(),
+        })?;
+
+    new_session(user, state).await
 }
 
-pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
-    let session = state
+pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> Result<CookieJar, Error> {
+    let session = match state
         .cache
         .create_session(user.id.unwrap(), &user.email)
         .await
-        .unwrap();
+    {
+        Ok(session) => session,
+        Err(e) => {
+            return Err(Error {
+                error: format!("Error creating session: {}", e),
+            });
+        }
+    };
 
     new_cookie(&session)
 }
 
-fn new_cookie(session: &Session) -> CookieJar {
+fn new_cookie(session: &Session) -> Result<CookieJar, Error> {
     let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
 
     let expires = OffsetDateTime::now_utc() + max_age;
@@ -600,7 +514,7 @@ fn new_cookie(session: &Session) -> CookieJar {
         .expires(expires)
         .build();
 
-    jar.add(cookie)
+    Ok(jar.add(cookie))
 }
 
 fn hash_email(email: &str) -> String {
@@ -657,77 +571,4 @@ async fn user_verify(t: XUserToken, session: Session) -> Result<XUserToken, Erro
             ),
         })
     }
-}
-
-async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
-    match get_user_by_sub(&idinfo.sub, &pool).await {
-        Ok(Some(user)) => Ok(user),
-        Ok(None) => {
-            let user_data = User {
-                id: None,
-                sub: idinfo.sub.clone(),
-                email: idinfo.email.clone(),
-                name: idinfo.name.clone(),
-                picture: idinfo.picture.clone(),
-                enabled: Some(true),
-                admin: Some(false),
-            };
-            match create_user(user_data, &pool).await {
-                Ok(user) => Ok(user),
-                Err(e) => Err(e),
-            }
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
-    let client_id =
-        std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
-
-    let idinfo = match verify_idtoken(jwt, client_id).await {
-        Ok(idinfo) => idinfo,
-        Err(err) => {
-            println!("Error: {:?}", err);
-            return Err(err);
-        }
-    };
-    println!("idinfo: {:?}", idinfo);
-    Ok(idinfo)
-}
-
-fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
-    let hashed_nonce_idinfo = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));
-
-    println!("idinfo_nonce: {:?}", hashed_nonce_idinfo);
-
-    if let Some(jar) = jar {
-        if let Some(hashed_nonce_cookie) = jar.get(NONCE_COOKIE_NAME) {
-            println!(
-                "hashed_nonce from header: {:?}, hashed idinfo.nonce: {:?}",
-                hashed_nonce_cookie.to_string(),
-                hashed_nonce_idinfo
-            );
-            if hashed_nonce_cookie.to_string() != hashed_nonce_idinfo {
-                let message = Error {
-                    error: "Invalid nonce".to_string(),
-                };
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
-            }
-        } else {
-            println!("hashed_nonce not found in header");
-
-            let message = Error {
-                error: "hashed_nonce not found".to_string(),
-            };
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)));
-        }
-    }
-
-    let message = Error {
-        error: "hashed_nonce not found".to_string(),
-    };
-    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
-
-    // Ok(())
 }

@@ -9,8 +9,9 @@ pub mod htmx_secret;
 pub mod idtoken;
 pub mod middleware;
 pub mod models; // Ensure this is also included if models are in a separate file
-pub mod oauth2;
+pub mod oauth2_google;
 pub mod settings;
+pub mod sign_in_with_google;
 pub mod spa;
 pub mod user;
 

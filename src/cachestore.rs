@@ -137,8 +137,6 @@ impl CacheStore for RedisCacheStore {
     }
 
     async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
-        let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
-
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         let session_id = thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
@@ -150,7 +148,7 @@ impl CacheStore for RedisCacheStore {
             .take(32)
             .map(char::from)
             .collect::<String>();
-        let expires = Utc::now() + max_age;
+        let expires = Utc::now() + Duration::seconds(*SESSION_COOKIE_MAX_AGE);
 
         let session = Session {
             session_id: session_id.clone(),
@@ -163,7 +161,7 @@ impl CacheStore for RedisCacheStore {
         conn.set_ex::<String, String, ()>(
             format!("session:{}", session_id),
             serde_json::to_string(&session)?,
-            3600,
+            *SESSION_COOKIE_MAX_AGE as u64,
         )
         .await?;
 
@@ -172,7 +170,8 @@ impl CacheStore for RedisCacheStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<(), CacheStoreError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.del::<String, ()>(format!("session:{}", session_id)).await?;
+        conn.del::<String, ()>(format!("session:{}", session_id))
+            .await?;
         Ok(())
     }
 
