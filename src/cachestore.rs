@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use rand::{thread_rng, Rng};
 use redis;
-use redis::{AsyncCommands, Client as RedisClient};
+use redis::AsyncCommands;
 use sqlx::Pool;
 use std::sync::Arc;
 use thiserror::Error;
@@ -112,7 +112,7 @@ impl CacheStore for SqlCacheStore {
     }
 }
 struct RedisCacheStore {
-    client: RedisClient,
+    client: redis::Client,
 }
 
 #[async_trait]
@@ -188,7 +188,7 @@ pub async fn get_cache_store() -> Result<Arc<dyn CacheStore + Send + Sync>, Cach
     match cache_store.as_str() {
         "redis" => {
             let redis_url = std::env::var("CACHE_REDIS_URL")?;
-            let client = RedisClient::open(redis_url)?;
+            let client = redis::Client::open(redis_url)?;
             Ok(Arc::new(RedisCacheStore { client }))
         }
         _ => {
