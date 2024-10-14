@@ -57,7 +57,7 @@ pub async fn check_auth(
             println!("Session ID: {:?}", session_id);
         } else {
             println!("Session ID not found in cookie.");
-            (StatusCode::UNAUTHORIZED, axum::Json(error_response)).into_response();
+            return (StatusCode::UNAUTHORIZED, axum::Json(error_response)).into_response();
         }
     } else {
         println!("Cookie not found.");
