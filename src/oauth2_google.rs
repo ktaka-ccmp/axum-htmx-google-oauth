@@ -13,7 +13,6 @@ use axum_extra::{headers, TypedHeader};
 use http::StatusCode;
 
 use serde::{Deserialize, Serialize};
-use std::env;
 
 use std::sync::Arc;
 use url::Url;
@@ -30,7 +29,7 @@ use super::{
     settings::{
         CSRF_COOKIE_MAX_AGE, CSRF_COOKIE_NAME, GOOGLE_OAUTH2_CLIENT_ID,
         GOOGLE_OAUTH2_CLIENT_SECRET, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME, OAUTH2_AUTH_URL,
-        OAUTH2_RESPONSE_MODE, OAUTH2_SCOPE, OAUTH2_TOKEN_URL,
+        OAUTH2_RESPONSE_MODE, OAUTH2_SCOPE, OAUTH2_TOKEN_URL, ORIGIN_SERVER,
     },
     user::get_or_create_user,
     AppState as CrateAppState,
@@ -56,10 +55,7 @@ fn app_state_init(crate_app_state: Arc<CrateAppState>) -> AppState {
     let oauth2_params = OAuth2Params {
         client_id: GOOGLE_OAUTH2_CLIENT_ID.to_string(),
         client_secret: GOOGLE_OAUTH2_CLIENT_SECRET.to_string(),
-        redirect_uri: format!(
-            "{}/oauth2/google/authorized",
-            env::var("ORIGIN_SERVER").expect("Missing ORIGIN_SERVER!")
-        ),
+        redirect_uri: format!("{}/oauth2/google/authorized", *ORIGIN_SERVER),
         auth_url: OAUTH2_AUTH_URL.to_string(),
         token_url: OAUTH2_TOKEN_URL.to_string(),
         response_type: ResponseType::Code.as_str().to_string(),

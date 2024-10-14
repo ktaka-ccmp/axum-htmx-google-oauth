@@ -137,7 +137,6 @@ impl CacheStore for RedisCacheStore {
     }
 
     async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
-
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         let session_id = thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)

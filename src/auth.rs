@@ -26,7 +26,7 @@ use super::{
     models::{Error, Session, User},
     settings::{
         CSRF_TOKEN_NAME, GOOGLE_OAUTH2_CLIENT_ID, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME,
-        SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME, USER_TOKEN_NAME,
+        ORIGIN_SERVER, SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME, USER_TOKEN_NAME,
     },
     user::get_user_by_id,
     AppState,
@@ -163,15 +163,15 @@ async fn refresh_token(
                 .body(Json(message).into_response().into_body())
                 .unwrap();
 
-            return (newjar, response).into_response();
+            (newjar, response).into_response()
         }
         Err(e) => {
             let message = Error {
                 error: format!("Error mutating session: {:?}", e),
             };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response();
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(message)).into_response()
         }
-    };
+    }
 }
 
 #[allow(non_snake_case)]
@@ -211,9 +211,7 @@ async fn auth_navbar(
     // For unauthenticated users, return the menu.login component.
     // fn auth_navbar_login() -> Html<String> {
     fn auth_navbar_login() -> impl IntoApiResponse {
-        let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
-
-        let login_url = origin_server + "/signin/w/google/authorized";
+        let login_url = ORIGIN_SERVER.clone() + "/signin/w/google/authorized";
         let icon_url = "/asset/icon.png".to_string();
         let refresh_token_url = "/auth/refresh_token".to_string();
         let mutate_user_url = "/auth/mutate_user".to_string();
