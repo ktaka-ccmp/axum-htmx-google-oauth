@@ -9,16 +9,14 @@ use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
 
-use super::auth::hash_nonce;
-use super::auth::new_session;
-use super::idtoken::verify_idtoken;
-
-use crate::models::{Error, IdInfo};
-use crate::user::get_or_create_user;
-use crate::AppState;
-
-use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
-use super::settings::NONCE_COOKIE_NAME;
+use super::{
+    auth::{hash_nonce, new_session},
+    idtoken::verify_idtoken,
+    models::{Error, IdInfo},
+    settings::{GOOGLE_OAUTH2_CLIENT_ID, NONCE_COOKIE_NAME},
+    user::get_or_create_user,
+    AppState,
+};
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()

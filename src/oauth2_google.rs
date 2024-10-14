@@ -22,27 +22,19 @@ use chrono::{DateTime, Duration, Utc};
 use rand::{thread_rng, Rng};
 use urlencoding::encode;
 
-use super::auth::hash_nonce;
-use super::auth::new_session;
-use super::idtoken::verify_idtoken;
-use super::AppState as CrateAppState;
-
-use super::models::Error;
-use super::user::get_or_create_user;
-
-use super::settings::OAUTH2_AUTH_URL;
-use super::settings::OAUTH2_RESPONSE_MODE;
-use super::settings::OAUTH2_SCOPE;
-use super::settings::OAUTH2_TOKEN_URL;
-
-use super::settings::CSRF_COOKIE_MAX_AGE;
-use super::settings::CSRF_COOKIE_NAME;
-
-use super::settings::NONCE_COOKIE_MAX_AGE;
-use super::settings::NONCE_COOKIE_NAME;
-
-use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
-use super::settings::GOOGLE_OAUTH2_CLIENT_SECRET;
+use super::{
+    auth::hash_nonce,
+    auth::new_session,
+    idtoken::verify_idtoken,
+    models::Error,
+    settings::{
+        CSRF_COOKIE_MAX_AGE, CSRF_COOKIE_NAME, GOOGLE_OAUTH2_CLIENT_ID,
+        GOOGLE_OAUTH2_CLIENT_SECRET, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME, OAUTH2_AUTH_URL,
+        OAUTH2_RESPONSE_MODE, OAUTH2_SCOPE, OAUTH2_TOKEN_URL,
+    },
+    user::get_or_create_user,
+    AppState as CrateAppState,
+};
 
 pub fn create_router(crate_app_state: Arc<CrateAppState>) -> ApiRouter {
     let app_state = app_state_init(crate_app_state);
