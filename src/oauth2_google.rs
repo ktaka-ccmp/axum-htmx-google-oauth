@@ -13,6 +13,7 @@ use axum_extra::{headers, TypedHeader};
 use http::StatusCode;
 
 use serde::{Deserialize, Serialize};
+use sqlx::pool;
 use std::env;
 
 use std::sync::Arc;
@@ -485,7 +486,8 @@ async fn authorized(
         admin: Some(false),
     };
 
-    let user = match get_or_create_user(state.clone(), user_data.clone()).await {
+    let user = match get_or_create_user(state.crate_app_state.pool.clone(), user_data.clone()).await
+    {
         Ok(user) => user,
         Err(e) => {
             let message = Error {
@@ -501,13 +503,16 @@ async fn authorized(
     Ok((jar, Redirect::to("/oauth2/google/popup_close")))
 }
 
+use crate::DB;
+use sqlx::Pool;
+
 async fn get_or_create_user(
-    state: AppState,
+    pool: Pool<DB>,
     user_data: crate::models::User,
 ) -> Result<crate::models::User, sqlx::Error> {
-    match get_user_by_sub(&user_data.sub, &state.crate_app_state.pool.clone()).await {
+    match get_user_by_sub(&user_data.sub, &pool.clone()).await {
         Ok(Some(user)) => Ok(user),
-        Ok(None) => match create_user(user_data, &state.crate_app_state.pool.clone()).await {
+        Ok(None) => match create_user(user_data, &pool.clone()).await {
             Ok(user) => Ok(user),
             Err(e) => Err(e),
         },

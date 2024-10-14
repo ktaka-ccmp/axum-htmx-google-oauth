@@ -57,7 +57,17 @@ async fn authorized(
         let _ = verify_nonce(jar.clone(), &idinfo);
         // println!("idinfo: {:?}", idinfo);
 
-        match get_or_create_user(&idinfo, state.pool.clone()).await {
+        let user_data = crate::models::User {
+            id: None,
+            sub: idinfo.sub.clone(),
+            email: idinfo.email.clone(),
+            name: idinfo.name.clone(),
+            picture: idinfo.picture.clone(),
+            enabled: Some(true),
+            admin: Some(false),
+        };
+
+        match get_or_create_user(state.pool.clone(), user_data).await {
             Ok(user) => {
                 let message = serde_json::json!({
                     "message": "Created user",
@@ -166,11 +176,29 @@ pub(crate) fn hash_nonce(nonce: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-async fn get_or_create_user(idinfo: &IdInfo, pool: Pool<DB>) -> Result<User, sqlx::Error> {
+
+async fn get_or_create_user(
+    pool: Pool<DB>,
+    user_data: crate::models::User,
+) -> Result<crate::models::User, sqlx::Error> {
+    match get_user_by_sub(&user_data.sub, &pool.clone()).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => match create_user(user_data, &pool.clone()).await {
+            Ok(user) => Ok(user),
+            Err(e) => Err(e),
+        },
+        Err(e) => Err(e),
+    }
+}
+
+async fn _get_or_create_user(
+    idinfo: &IdInfo,
+    pool: Pool<DB>,
+) -> Result<crate::models::User, sqlx::Error> {
     match get_user_by_sub(&idinfo.sub, &pool).await {
         Ok(Some(user)) => Ok(user),
         Ok(None) => {
-            let user_data = User {
+            let user_data = crate::models::User {
                 id: None,
                 sub: idinfo.sub.clone(),
                 email: idinfo.email.clone(),
