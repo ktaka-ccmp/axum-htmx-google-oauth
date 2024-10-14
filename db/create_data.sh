@@ -45,7 +45,6 @@ echo "Sessions:"
 echo "select * from sessions" | sqlite3 $DB
 
 if [ "$CACHE_STORE" == "redis" ]; then
-    # reds_cmd="redis-cli -h $REDIS_HOST -p $REDIS_PORT"
     reds_cmd="redis-cli -u $CACHE_REDIS_URL"
     # Clean up existing sessions
     $reds_cmd keys "*"| xargs -i $reds_cmd del {}
