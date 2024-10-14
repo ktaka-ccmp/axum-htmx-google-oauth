@@ -3,6 +3,13 @@ use once_cell::sync::Lazy;
 pub(crate) static OAUTH2_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub(crate) static OAUTH2_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
+pub(crate) static GOOGLE_OAUTH2_CLIENT_ID: Lazy<String> = Lazy::new(|| {
+    std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set")
+});
+pub(crate) static GOOGLE_OAUTH2_CLIENT_SECRET: Lazy<String> = Lazy::new(|| {
+    std::env::var("GOOGLE_OAUTH2_CLIENT_SECRET").expect("GOOGLE_OAUTH2_CLIENT_SECRET must be set")
+});
+
 pub(crate) static OAUTH2_SCOPE: Lazy<String> =
     Lazy::new(|| std::env::var("OAUTH2_SCOPE").unwrap_or("openid+email+profile".to_string()));
 pub(crate) static OAUTH2_RESPONSE_MODE: Lazy<String> =

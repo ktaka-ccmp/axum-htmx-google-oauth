@@ -35,6 +35,8 @@ use super::settings::USER_TOKEN_NAME;
 use crate::settings::NONCE_COOKIE_MAX_AGE;
 use crate::settings::NONCE_COOKIE_NAME;
 
+use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
+
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
         .api_route("/logout", get_with(logout, |op| op.tag("auth")))
@@ -215,8 +217,6 @@ async fn auth_navbar(
     // For unauthenticated users, return the menu.login component.
     // fn auth_navbar_login() -> Html<String> {
     fn auth_navbar_login() -> impl IntoApiResponse {
-        let client_id =
-            std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
         let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
 
         let login_url = origin_server + "/signin/w/google/authorized";
@@ -248,7 +248,7 @@ async fn auth_navbar(
         jar = jar.add(cookie);
 
         let template = NavbarLoginTemplate {
-            client_id,
+            client_id: GOOGLE_OAUTH2_CLIENT_ID.to_string(),
             login_url,
             icon_url,
             refresh_token_url,

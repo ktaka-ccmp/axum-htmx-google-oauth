@@ -13,7 +13,6 @@ use axum_extra::{headers, TypedHeader};
 use http::StatusCode;
 
 use serde::{Deserialize, Serialize};
-use sqlx::pool;
 use std::env;
 
 use std::sync::Arc;
@@ -29,7 +28,7 @@ use super::idtoken::verify_idtoken;
 use super::AppState as CrateAppState;
 
 use super::models::Error;
-use super::user::{create_user, get_user_by_sub};
+use super::user::get_or_create_user;
 
 use super::settings::OAUTH2_AUTH_URL;
 use super::settings::OAUTH2_RESPONSE_MODE;
@@ -41,6 +40,9 @@ use super::settings::CSRF_COOKIE_NAME;
 
 use super::settings::NONCE_COOKIE_MAX_AGE;
 use super::settings::NONCE_COOKIE_NAME;
+
+use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
+use super::settings::GOOGLE_OAUTH2_CLIENT_SECRET;
 
 pub fn create_router(crate_app_state: Arc<CrateAppState>) -> ApiRouter {
     let app_state = app_state_init(crate_app_state);
@@ -60,9 +62,8 @@ fn app_state_init(crate_app_state: Arc<CrateAppState>) -> AppState {
     let store = MemoryStore::new();
 
     let oauth2_params = OAuth2Params {
-        client_id: env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("Missing GOOGLE_OAUTH2_CLIENT_ID!"),
-        client_secret: env::var("GOOGLE_OAUTH2_CLIENT_SECRET")
-            .expect("Missing GOOGLE_OAUTH2_CLIENT_SECRET!"),
+        client_id: GOOGLE_OAUTH2_CLIENT_ID.to_string(),
+        client_secret: GOOGLE_OAUTH2_CLIENT_SECRET.to_string(),
         redirect_uri: format!(
             "{}/oauth2/google/authorized",
             env::var("ORIGIN_SERVER").expect("Missing ORIGIN_SERVER!")
@@ -501,23 +502,6 @@ async fn authorized(
     let jar = new_session(user, state.crate_app_state).await;
 
     Ok((jar, Redirect::to("/oauth2/google/popup_close")))
-}
-
-use crate::DB;
-use sqlx::Pool;
-
-async fn get_or_create_user(
-    pool: Pool<DB>,
-    user_data: crate::models::User,
-) -> Result<crate::models::User, sqlx::Error> {
-    match get_user_by_sub(&user_data.sub, &pool.clone()).await {
-        Ok(Some(user)) => Ok(user),
-        Ok(None) => match create_user(user_data, &pool.clone()).await {
-            Ok(user) => Ok(user),
-            Err(e) => Err(e),
-        },
-        Err(e) => Err(e),
-    }
 }
 
 async fn validate_origin(headers: &HeaderMap, auth_url: &str) -> Result<(), AppError> {

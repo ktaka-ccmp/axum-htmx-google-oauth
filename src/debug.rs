@@ -12,6 +12,8 @@ use axum_extra::extract::cookie::CookieJar;
 use askama_axum::Template;
 
 use super::settings::SESSION_COOKIE_NAME;
+use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
+
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
@@ -36,11 +38,9 @@ struct SigninTemplate {
 }
 
 async fn signinpage() -> Html<String> {
-    let client_id =
-        std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
     let signin_template = SigninTemplate {
         title: "Signin".to_string(),
-        client_id,
+        client_id: GOOGLE_OAUTH2_CLIENT_ID.to_string(),
         nonce: "n-0S6_WzA2Mj".to_string(),
         login_url: "/auth/login".to_string(),
     };

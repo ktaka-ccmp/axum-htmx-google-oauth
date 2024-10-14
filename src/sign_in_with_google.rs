@@ -2,32 +2,24 @@ use aide::axum::{routing::post_with, ApiRouter, IntoApiResponse};
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 
 use axum_extra::extract::cookie::CookieJar;
-use cookie::{
-    time::{Duration, OffsetDateTime},
-    Cookie, SameSite,
-};
 
 use std::sync::Arc;
 
 use bytes::Bytes;
 use hyper::{header, Response};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
-use sqlx::Pool;
 
-use crate::idtoken::verify_idtoken;
-use crate::idtoken::TokenVerificationError;
-use crate::models::{Error, IdInfo, Session, User};
-use crate::user::{create_user, get_user_by_sub};
-use crate::{AppState, DB};
+use super::auth::hash_nonce;
+use super::auth::new_session;
+use super::idtoken::verify_idtoken;
+use super::idtoken::TokenVerificationError;
 
-use super::settings::SESSION_COOKIE_MAX_AGE;
-use super::settings::SESSION_COOKIE_NAME;
+use crate::models::{Error, IdInfo};
+use crate::user::get_or_create_user;
+use crate::AppState;
 
-use super::settings::CSRF_TOKEN_NAME;
-use super::settings::USER_TOKEN_NAME;
-
-use crate::settings::NONCE_COOKIE_NAME;
+use super::settings::NONCE_COOKIE_NAME;
+use super::settings::GOOGLE_OAUTH2_CLIENT_ID;
 
 pub fn create_router(state: Arc<AppState>) -> ApiRouter {
     ApiRouter::new()
@@ -111,116 +103,8 @@ async fn authorized(
     }
 }
 
-pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> CookieJar {
-    let session = state
-        .cache
-        .create_session(user.id.unwrap(), &user.email)
-        .await
-        .unwrap();
-
-    new_cookie(&session)
-}
-
-fn new_cookie(session: &Session) -> CookieJar {
-    let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
-
-    let expires = OffsetDateTime::now_utc() + max_age;
-
-    let mut jar = CookieJar::new();
-
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, session.session_id.clone()))
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Strict)
-        .max_age(max_age)
-        .expires(expires)
-        .build();
-
-    jar = jar.add(cookie);
-
-    let cookie = Cookie::build((CSRF_TOKEN_NAME, session.csrf_token.clone()))
-        .path("/")
-        .secure(true)
-        .http_only(false)
-        .same_site(SameSite::Strict)
-        .max_age(max_age)
-        .expires(expires)
-        .build();
-
-    jar = jar.add(cookie);
-
-    let cookie = Cookie::build((USER_TOKEN_NAME, hash_email(&session.email)))
-        .path("/")
-        .secure(true)
-        .http_only(false)
-        .same_site(SameSite::Strict)
-        .max_age(max_age)
-        .expires(expires)
-        .build();
-
-    jar.add(cookie)
-}
-
-fn hash_email(email: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(email.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
-pub(crate) fn hash_nonce(nonce: &str) -> String {
-    let secret_salt = std::env::var("NONCE_SALT").expect("NONCE_SALT must be set in .env");
-    let mut hasher = Sha256::new();
-    hasher.update(nonce.as_bytes());
-    hasher.update(secret_salt.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
-
-async fn get_or_create_user(
-    pool: Pool<DB>,
-    user_data: crate::models::User,
-) -> Result<crate::models::User, sqlx::Error> {
-    match get_user_by_sub(&user_data.sub, &pool.clone()).await {
-        Ok(Some(user)) => Ok(user),
-        Ok(None) => match create_user(user_data, &pool.clone()).await {
-            Ok(user) => Ok(user),
-            Err(e) => Err(e),
-        },
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_or_create_user(
-    idinfo: &IdInfo,
-    pool: Pool<DB>,
-) -> Result<crate::models::User, sqlx::Error> {
-    match get_user_by_sub(&idinfo.sub, &pool).await {
-        Ok(Some(user)) => Ok(user),
-        Ok(None) => {
-            let user_data = crate::models::User {
-                id: None,
-                sub: idinfo.sub.clone(),
-                email: idinfo.email.clone(),
-                name: idinfo.name.clone(),
-                picture: idinfo.picture.clone(),
-                enabled: Some(true),
-                admin: Some(false),
-            };
-            match create_user(user_data, &pool).await {
-                Ok(user) => Ok(user),
-                Err(e) => Err(e),
-            }
-        }
-        Err(e) => Err(e),
-    }
-}
-
 async fn verify_token(jwt: String) -> Result<IdInfo, TokenVerificationError> {
-    let client_id =
-        std::env::var("GOOGLE_OAUTH2_CLIENT_ID").expect("GOOGLE_OAUTH2_CLIENT_ID must be set");
-
-    let idinfo = match verify_idtoken(jwt, client_id).await {
+    let idinfo = match verify_idtoken(jwt, GOOGLE_OAUTH2_CLIENT_ID.to_string()).await {
         Ok(idinfo) => idinfo,
         Err(err) => {
             println!("Error: {:?}", err);

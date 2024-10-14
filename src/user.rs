@@ -358,3 +358,17 @@ where
 
     Ok(())
 }
+
+pub(crate) async fn get_or_create_user(
+    pool: Pool<DB>,
+    user_data: crate::models::User,
+) -> Result<crate::models::User, sqlx::Error> {
+    match get_user_by_sub(&user_data.sub, &pool.clone()).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => match create_user(user_data, &pool.clone()).await {
+            Ok(user) => Ok(user),
+            Err(e) => Err(e),
+        },
+        Err(e) => Err(e),
+    }
+}
