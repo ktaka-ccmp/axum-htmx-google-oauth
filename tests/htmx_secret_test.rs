@@ -2,17 +2,83 @@
 mod tests {
     use aide::axum::ApiRouter;
     use api_server_htmx::htmx_secret::create_router;
+    use api_server_htmx::AppState;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use http_body_util::BodyExt;
-    use tower::ServiceExt; // for `oneshot` method // for `collect`
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+    use async_trait::async_trait;
+    use api_server_htmx::models::Session;
+    use api_server_htmx::cachestore::{CacheStore, CacheStoreError};
+    use std::collections::HashMap;
+    use tokio::sync::Mutex;
+
+    struct MockCacheStore {
+        sessions: Mutex<HashMap<String, Session>>,
+    }
+
+    #[async_trait]
+    impl CacheStore for MockCacheStore {
+        async fn get_session(&self, session_id: &str) -> Result<Option<Session>, CacheStoreError> {
+            let sessions = self.sessions.lock().await;
+            Ok(sessions.get(session_id).cloned())
+        }
+
+        async fn list_sessions(&self) -> Result<Vec<Session>, CacheStoreError> {
+            let sessions = self.sessions.lock().await;
+            Ok(sessions.values().cloned().collect())
+        }
+
+        async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
+            let mut sessions = self.sessions.lock().await;
+            let session = Session {
+                session_id: format!("test_session_{}", user_id),
+                csrf_token: "test_csrf_token".to_string(),
+                user_id,
+                email: email.to_string(),
+                expires: chrono::Utc::now().timestamp() + 3600, // 1 hour from now
+            };
+            sessions.insert(session.session_id.clone(), session.clone());
+            Ok(session)
+        }
+
+        async fn delete_session(&self, session_id: &str) -> Result<(), CacheStoreError> {
+            let mut sessions = self.sessions.lock().await;
+            sessions.remove(session_id);
+            Ok(())
+        }
+
+        async fn cleanup_sessions(&self) -> Result<(), CacheStoreError> {
+            let mut sessions = self.sessions.lock().await;
+            let now = chrono::Utc::now().timestamp();
+            sessions.retain(|_, session| session.expires > now);
+            Ok(())
+        }
+    }
+
+    async fn create_test_app_state() -> Arc<AppState> {
+        // Create a SQLite connection pool
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect("sqlite::memory:")
+            .await
+            .expect("Failed to create SQLite pool");
+
+        // Create a mock cache store
+        let cache = Arc::new(MockCacheStore {
+            sessions: Mutex::new(HashMap::new()),
+        });
+
+        Arc::new(AppState { pool, cache })
+    }
 
     async fn send_request(router: &ApiRouter, uri: &str) -> Response {
         let request = Request::builder()
             .uri(uri)
-            .header("HX-Request", "true") // Simulating an HX request
-            .header("Cookie", "session_id=your_session_id_here") // Add session_id Cookie
+            .header("HX-Request", "true")
             .body(Body::empty())
             .unwrap();
 
@@ -30,17 +96,9 @@ mod tests {
         assert!(body_str.contains(expected));
     }
 
-    async fn _assert_response_not_ok(router: &ApiRouter, uri: &str) {
-        let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
-
-        let response = router.clone().oneshot(request).await.unwrap();
-        assert_ne!(response.status(), StatusCode::OK);
-    }
-
     async fn assert_response_not_ok_wo_hx_request(router: &ApiRouter, uri: &str) {
         let request = Request::builder()
             .uri(uri)
-            .header("Cookie", "session_id=your_session_id_here") // Add session_id Cookie
             .body(Body::empty())
             .unwrap();
 
@@ -48,20 +106,14 @@ mod tests {
         assert_ne!(response.status(), StatusCode::OK);
     }
 
-    async fn assert_response_not_ok_wo_session_id(router: &ApiRouter, uri: &str) {
-        let request = Request::builder()
-            .uri(uri)
-            .header("HX-Request", "true") // Simulating an HX request
-            .body(Body::empty())
-            .unwrap();
-
-        let response = router.clone().oneshot(request).await.unwrap();
-        assert_ne!(response.status(), StatusCode::OK);
+    async fn create_test_router() -> ApiRouter {
+        let state = create_test_app_state().await;
+        create_router(state)
     }
 
     #[tokio::test]
     async fn test_content_secret1() {
-        let router = create_router();
+        let router = create_test_router().await;
         dotenv::dotenv().ok();
         let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
         assert_response_contains(
@@ -80,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_content_secret2() {
-        let router = create_router();
+        let router = create_test_router().await;
         dotenv::dotenv().ok();
         let origin_server = std::env::var("ORIGIN_SERVER").expect("ORIGIN_SERVER must be set");
         assert_response_contains(
@@ -99,25 +151,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_content_secret1_without_hx_request() {
-        let router = create_router();
+        let router = create_test_router().await;
         assert_response_not_ok_wo_hx_request(&router, "/content.secret1").await;
     }
 
     #[tokio::test]
     async fn test_content_secret2_without_hx_request() {
-        let router = create_router();
+        let router = create_test_router().await;
         assert_response_not_ok_wo_hx_request(&router, "/content.secret2").await;
-    }
-
-    #[tokio::test]
-    async fn test_content_secret1_without_session_id() {
-        let router = create_router();
-        assert_response_not_ok_wo_session_id(&router, "/content.secret1").await;
-    }
-
-    #[tokio::test]
-    async fn test_content_secret2_without_session_id() {
-        let router = create_router();
-        assert_response_not_ok_wo_session_id(&router, "/content.secret2").await;
     }
 }

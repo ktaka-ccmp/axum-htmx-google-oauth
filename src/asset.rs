@@ -134,9 +134,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_routes() {
         let routes = get_routes();
-        assert_eq!(routes.len(), 6);
+        assert_eq!(routes.len(), 7);
         assert_eq!(
-            routes[0],
+            routes[1],
             (
                 "assets/dog_meme.png",
                 "/secret1.png",
