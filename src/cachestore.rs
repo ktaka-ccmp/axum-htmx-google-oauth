@@ -172,7 +172,8 @@ impl CacheStore for RedisCacheStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<(), CacheStoreError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.del::<String, ()>(format!("session:{}", session_id)).await?;
+        conn.del::<String, ()>(format!("session:{}", session_id))
+            .await?;
         Ok(())
     }
 

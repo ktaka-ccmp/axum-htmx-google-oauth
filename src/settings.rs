@@ -3,12 +3,10 @@ use once_cell::sync::Lazy;
 pub(crate) static OAUTH2_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub(crate) static OAUTH2_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
-pub(crate) static OAUTH2_SCOPE: Lazy<String> = Lazy::new(|| {
-    std::env::var("OAUTH2_SCOPE").unwrap_or("openid+email+profile".to_string())
-});
-pub(crate) static OAUTH2_RESPONSE_MODE: Lazy<String> = Lazy::new(|| {
-    std::env::var("OAUTH2_RESPONSE_MODE").unwrap_or("query".to_string())
-});
+pub(crate) static OAUTH2_SCOPE: Lazy<String> =
+    Lazy::new(|| std::env::var("OAUTH2_SCOPE").unwrap_or("openid+email+profile".to_string()));
+pub(crate) static OAUTH2_RESPONSE_MODE: Lazy<String> =
+    Lazy::new(|| std::env::var("OAUTH2_RESPONSE_MODE").unwrap_or("query".to_string()));
 
 // "__Host-" prefix are added to make cookies "host-only".
 pub(crate) static SESSION_COOKIE_NAME: &str = "__Host-SessionId";
