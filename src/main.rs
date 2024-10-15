@@ -4,14 +4,18 @@ use aide::{
     scalar::Scalar,
 };
 
-use axum::middleware::{from_fn_with_state, map_response};
-use axum::{response::Redirect, Extension, Json};
+use axum::{
+    http::Method,
+    middleware::{from_fn_with_state, map_response},
+    {response::Redirect, Extension, Json},
+};
 
 use dotenv::dotenv;
+use http::HeaderValue;
 use sqlx::Pool;
 use std::{net::SocketAddr, sync::Arc};
 
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use api_server_htmx::api;
 use api_server_htmx::api2;
@@ -22,6 +26,7 @@ use api_server_htmx::debug;
 use api_server_htmx::htmx;
 use api_server_htmx::htmx_secret;
 use api_server_htmx::oauth2_google;
+use api_server_htmx::settings::ORIGIN_SERVER;
 use api_server_htmx::sign_in_with_google;
 use api_server_htmx::spa;
 use api_server_htmx::user;
@@ -48,6 +53,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pool: pool.clone(),
         cache,
     });
+
+    let cors = CorsLayer::new()
+        // Allow `GET` and `POST` when accessing the resource
+        .allow_methods([Method::GET, Method::POST])
+        // Allow requests from any origin
+        .allow_origin(ORIGIN_SERVER.parse::<HeaderValue>().unwrap())
+        // Allow sending any header in the request
+        .allow_headers(vec![
+            "Authorization".parse().unwrap(),
+            "Content-Type".parse().unwrap(),
+            "X-CSRF-TOKEN".parse().unwrap(),
+            "X-USER-TOKEN".parse().unwrap(),
+        ])
+        // Allow credentials (cookies, authorization headers, or TLS client certificates)
+        .allow_credentials(true);
 
     let docs_router = ApiRouter::new()
         .route("/", Scalar::new("/docs/api.json").axum_route())
@@ -82,6 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             sign_in_with_google::create_router(state.clone()),
         )
         .layer(map_response(add_csp_header))
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(());
 
