@@ -43,5 +43,5 @@ pub(crate) static NONCE_COOKIE_MAX_AGE: Lazy<i64> = Lazy::new(|| {
         .unwrap_or(60) // Default to 1 minutes if not set or invalid
 });
 
-pub(crate) static ORIGIN_SERVER: Lazy<String> =
+pub static ORIGIN_SERVER: Lazy<String> =
     Lazy::new(|| std::env::var("ORIGIN_SERVER").unwrap_or("http://localhost:3000".to_string()));

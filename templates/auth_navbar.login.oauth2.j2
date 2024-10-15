@@ -1,48 +1,68 @@
-<div>
-     <button class="btn btn-link p-2" onclick="openPopup()"><img src="/asset/google_oauth2.png" width=30
-               alt="Google OAuth2"></button>
+<div id="popup-handler">
+     <button class="btn btn-link p-2" onclick="PopupHandler.openPopup()">
+          <img src="/asset/google_oauth2.png" width=30 alt="Google OAuth2">
+     </button>
 
      <script>
-          let popupWindow;
-          let isReloading = false;
+          // Ensure we're not redeclaring the PopupHandler
+          if (typeof window.PopupHandler === 'undefined') {
+               window.PopupHandler = {
+                    popupWindow: null,
+                    isReloading: false,
+                    popupTimer: null,
+                    lastFocusTime: null,
 
-          function openPopup() {
-               popupWindow = window.open(
-                    `/oauth2/google`,
-                    "PopupWindow",
-                    "width=700,height=800,left=1000,top=-1000,resizable=yes,scrollbars=yes"
-               );
+                    openPopup: function () {
+                         this.popupWindow = window.open(
+                              `/oauth2/google`,
+                              "PopupWindow",
+                              "width=700,height=800,left=1000,top=-1000,resizable=yes,scrollbars=yes"
+                         );
 
-               // Set up an interval to check if the popup has returned to our origin
-               const checkInterval = setInterval(() => {
-                    if (popupWindow.closed) {
-                         clearInterval(checkInterval);
-                         handlePopupClosed();
+                         if (this.popupWindow) {
+                              this.lastFocusTime = Date.now();
+                              window.addEventListener('focus', this.onFocus.bind(this));
+                              this.popupTimer = setInterval(this.checkPopupStatus.bind(this), 500);
+                         } else {
+                              alert("Popup was blocked. Please allow popups for this site.");
+                         }
+                    },
+
+                    onFocus: function () {
+                         this.lastFocusTime = Date.now();
+                    },
+
+                    checkPopupStatus: function () {
+                         if (Date.now() - this.lastFocusTime > 1000) {
+                              clearInterval(this.popupTimer);
+                              window.removeEventListener('focus', this.onFocus);
+                              this.handlePopupClosed();
+                         }
+                    },
+
+                    handlePopupClosed: function () {
+                         if (this.isReloading) return;  // Prevent multiple reloads
+                         this.isReloading = true;
+
+                         const statusElement = document.getElementById('status');
+                         if (statusElement) {
+                              statusElement.textContent = 'Popup closed. Reloading parent...';
+                         }
+
+                         // Reload the parent window
+                         htmx.trigger("#auth_navbar", "ReloadNavbar", {});
+                    },
+
+                    cleanup: function () {
+                         if (this.popupTimer) {
+                              clearInterval(this.popupTimer);
+                         }
+                         window.removeEventListener('focus', this.onFocus);
                     }
-               }, 100);  // Check every 100ms
+               };
+
+               // Add an unload event listener to handle page navigation
+               window.addEventListener('unload', PopupHandler.cleanup.bind(PopupHandler));
           }
-
-          function handlePopupClosed() {
-               if (isReloading) return;  // Prevent multiple reloads
-               isReloading = true;
-
-               const statusElement = document.getElementById('status');
-               if (statusElement) {
-                    statusElement.textContent = 'Popup closed. Reloading parent...';
-               }
-
-               // Reload the parent window
-               //               setTimeout(() => {
-               // window.location.reload();
-               htmx.trigger("#auth_navbar", "ReloadNavbar", {});
-               //              }, 100);  // Wait for 1 second before reloading
-          }
-
-          // Add an unload event listener to handle page navigation
-          window.addEventListener('unload', () => {
-               if (popupWindow && !popupWindow.closed) {
-                    popupWindow.close();
-               }
-          });
      </script>
 </div>

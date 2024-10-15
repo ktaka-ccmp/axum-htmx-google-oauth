@@ -1,3 +1,31 @@
+/// This module handles the sign-in process with Google OAuth2.
+///
+/// It provides the following functionalities:
+/// - Creating an API router with the necessary routes.
+/// - Handling the authorization process by verifying the ID token and nonce, creating a user session, and responding accordingly.
+///
+/// # Functions
+///
+/// - `create_router`: Creates an `ApiRouter` with the `/authorized` route for handling Google OAuth2 authorization.
+/// - `authorized`: Handles the authorization process, including verifying the ID token, checking the nonce, creating a user, and starting a session.
+/// - `verify_nonce`: Verifies the nonce from the ID token against the nonce stored in the cookies.
+///
+/// # Structs
+///
+/// - `FormData`: Represents the form data received in the authorization request, containing the credential (JWT) and state.
+///
+/// # Dependencies
+///
+/// This module depends on several external crates and internal modules:
+/// - External crates: `aide`, `axum`, `axum_extra`, `bytes`, `hyper`, `serde`
+/// - Internal modules: `auth`, `idtoken`, `models`, `settings`, `user`
+///
+/// # Example
+///
+/// ```rust
+/// let state = Arc::new(AppState::new());
+/// let router = create_router(state);
+/// ```
 use aide::axum::{routing::post_with, ApiRouter, IntoApiResponse};
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 
@@ -30,6 +58,31 @@ struct FormData {
     credential: Option<String>,
     state: Option<String>,
 }
+
+/// Handles the authorization process for Google OAuth2.
+///
+/// This function performs the following steps:
+/// 1. Extracts the application state, cookies, and request body.
+/// 2. Parses the form data from the request body to extract the JWT (credential).
+/// 3. Verifies the JWT using Google's OAuth2 client ID.
+/// 4. If the JWT verification fails, responds with an unauthorized status.
+/// 5. Verifies the nonce from the ID token against the nonce stored in the cookies.
+/// 6. If the nonce verification fails, responds with the appropriate error status.
+/// 7. Creates or retrieves a user based on the ID token information.
+/// 8. If user creation fails, responds with an internal server error status.
+/// 9. Creates a new session for the user.
+/// 10. If session creation fails, responds with an internal server error status.
+/// 11. Constructs a success message with the user's email.
+/// 12. If the form data contains a state (original page URL), redirects to that URL.
+/// 13. Otherwise, responds with the success message in JSON format.
+///
+/// # Parameters
+/// - `State(state)`: The application state wrapped in an `Arc`.
+/// - `jar`: An optional `CookieJar` containing the cookies from the request.
+/// - `body`: The request body as `Bytes`.
+///
+/// # Returns
+/// An implementation of `IntoApiResponse` which can be a redirect response or a JSON response.
 
 async fn authorized(
     State(state): State<Arc<AppState>>,
@@ -118,6 +171,28 @@ async fn authorized(
         (jar, response).into_response()
     }
 }
+
+/// Verifies the nonce from the `IdInfo` against the nonce stored in the `CookieJar`.
+///
+/// # Arguments
+///
+/// * `jar` - An optional `CookieJar` that may contain the nonce cookie.
+/// * `idinfo` - A reference to `IdInfo` which contains the nonce to be verified.
+///
+/// # Returns
+///
+/// * `Ok(())` if the nonce in `idinfo` matches the nonce in the `CookieJar`.
+/// * `Err((StatusCode, Json<Error>))` if the `CookieJar` is not found, the nonce is not found in the `CookieJar`,
+///   or the nonces do not match.
+///
+/// # Steps
+///
+/// 1. Hash the nonce from `idinfo` using the `hash_nonce` function.
+/// 2. Attempt to retrieve the `CookieJar`. If not found, log an error and return an `INTERNAL_SERVER_ERROR`.
+/// 3. Retrieve the hashed nonce from the `CookieJar`. If not found, log an error and return an `INTERNAL_SERVER_ERROR`.
+/// 4. Compare the hashed nonce from `idinfo` with the hashed nonce from the `CookieJar`.
+///    - If they match, return `Ok(())`.
+///    - If they do not match, log an error and return an `INTERNAL_SERVER_ERROR`.
 
 fn verify_nonce(jar: Option<CookieJar>, idinfo: &IdInfo) -> Result<(), (StatusCode, Json<Error>)> {
     let hashed_nonce_idinfo = hash_nonce(idinfo.nonce.as_ref().unwrap_or(&"".to_string()));

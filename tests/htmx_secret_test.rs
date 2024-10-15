@@ -1,20 +1,20 @@
 #[cfg(test)]
 mod tests {
     use aide::axum::ApiRouter;
+    use api_server_htmx::cachestore::{CacheStore, CacheStoreError};
     use api_server_htmx::htmx_secret::create_router;
+    use api_server_htmx::models::Session;
     use api_server_htmx::AppState;
+    use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use http_body_util::BodyExt;
     use sqlx::sqlite::SqlitePoolOptions;
-    use std::sync::Arc;
-    use tower::ServiceExt;
-    use async_trait::async_trait;
-    use api_server_htmx::models::Session;
-    use api_server_htmx::cachestore::{CacheStore, CacheStoreError};
     use std::collections::HashMap;
+    use std::sync::Arc;
     use tokio::sync::Mutex;
+    use tower::ServiceExt;
 
     struct MockCacheStore {
         sessions: Mutex<HashMap<String, Session>>,
@@ -32,7 +32,11 @@ mod tests {
             Ok(sessions.values().cloned().collect())
         }
 
-        async fn create_session(&self, user_id: i64, email: &str) -> Result<Session, CacheStoreError> {
+        async fn create_session(
+            &self,
+            user_id: i64,
+            email: &str,
+        ) -> Result<Session, CacheStoreError> {
             let mut sessions = self.sessions.lock().await;
             let session = Session {
                 session_id: format!("test_session_{}", user_id),
@@ -97,10 +101,7 @@ mod tests {
     }
 
     async fn assert_response_not_ok_wo_hx_request(router: &ApiRouter, uri: &str) {
-        let request = Request::builder()
-            .uri(uri)
-            .body(Body::empty())
-            .unwrap();
+        let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
 
         let response = router.clone().oneshot(request).await.unwrap();
         assert_ne!(response.status(), StatusCode::OK);

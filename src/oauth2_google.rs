@@ -1,3 +1,42 @@
+/// This module handles Google OAuth2 authentication for an Axum web application.
+/// It provides routes for initiating the OAuth2 flow, handling the authorization response,
+/// and closing the authentication popup window.
+///
+/// The main components of this module are:
+/// - `create_router`: Sets up the API routes for the OAuth2 flow.
+/// - `app_state_init`: Initializes the application state with OAuth2 parameters and session store.
+/// - `google_auth`: Initiates the OAuth2 flow by redirecting the user to Google's authorization endpoint.
+/// - `get_authorized` and `post_authorized`: Handle the authorization response from Google.
+/// - `authorized`: Exchanges the authorization code for tokens and verifies the ID token.
+/// - `popup_close`: Closes the authentication popup window.
+///
+/// The module also defines several enums and structs to represent OAuth2 parameters and responses:
+/// - `OAuth2ResponseMode`: Enum representing the response mode for OAuth2.
+/// - `Prompt`: Enum representing the prompt parameter for OAuth2.
+/// - `AccessType`: Enum representing the access type for OAuth2.
+/// - `ResponseType`: Enum representing the response type for OAuth2.
+/// - `OAuth2Params`: Struct representing the OAuth2 parameters.
+/// - `AppState`: Struct representing the application state.
+/// - `User`: Struct representing the user data returned by Google.
+/// - `CsrfData`: Struct representing CSRF token data.
+/// - `AuthRequest`: Struct representing the authorization request.
+/// - `OidcTokenResponse`: Struct representing the token response from Google.
+///
+/// The module also defines several helper functions:
+/// - `validate_origin`: Validates the origin of the request.
+/// - `csrf_checks`: Performs CSRF checks.
+/// - `header_set_cookie`: Sets a cookie in the response headers.
+/// - `fetch_user_data_from_google`: Fetches user data from Google using the access token.
+/// - `exchange_code_for_token`: Exchanges the authorization code for tokens.
+///
+/// Error handling is done using the `AppError` enum, which defines various error types:
+/// - `SessionError`: Error related to session handling.
+/// - `AuthError`: Error related to authentication.
+/// - `NetworkError`: Error related to network requests.
+/// - `SerializationError`: Error related to serialization.
+/// - `UnexpectedError`: Catch-all for unexpected errors.
+///
+/// The module uses the `aide` crate for API documentation and the `axum` crate for web framework functionality.
 use aide::{
     axum::{routing::get_with, ApiRouter, IntoApiResponse},
     OperationOutput,
