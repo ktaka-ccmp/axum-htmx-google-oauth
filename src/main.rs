@@ -4,7 +4,7 @@ use aide::{
     scalar::Scalar,
 };
 
-use axum::middleware::from_fn_with_state;
+use axum::middleware::{from_fn_with_state, map_response};
 use axum::{response::Redirect, Extension, Json};
 
 use dotenv::dotenv;
@@ -28,7 +28,7 @@ use api_server_htmx::user;
 
 use api_server_htmx::AppState;
 
-use api_server_htmx::middleware::is_authenticated;
+use api_server_htmx::middleware::{add_csp_header, is_authenticated};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -81,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/signin/w/google",
             sign_in_with_google::create_router(state.clone()),
         )
+        .layer(map_response(add_csp_header))
         .layer(TraceLayer::new_for_http())
         .with_state(());
 

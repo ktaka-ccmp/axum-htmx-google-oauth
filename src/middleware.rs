@@ -4,10 +4,11 @@ use axum::{
     extract::State,
     http::{Request, StatusCode},
     middleware::Next,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     Json,
 };
 use axum_extra::extract::cookie::CookieJar;
+use http::{header, HeaderValue};
 use serde::Serialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -161,4 +162,24 @@ async fn get_current_user(session_id: &str, State(state): State<Arc<AppState>>) 
         );
         None
     }
+}
+
+fn generate_csp_header() -> String {
+    "default-src 'self'; \
+     script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://cdnjs.cloudflare.com; \
+     style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://accounts.google.com; \
+     font-src 'self' https://cdn.jsdelivr.net; \
+     img-src 'self' data: https:; \
+     connect-src 'self' https://accounts.google.com; \
+     frame-src https://accounts.google.com"
+        .to_string()
+}
+
+pub async fn add_csp_header(mut response: Response) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_str(&generate_csp_header()).unwrap(),
+    );
+    response
 }
