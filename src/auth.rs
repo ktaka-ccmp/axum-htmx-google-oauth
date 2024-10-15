@@ -1,3 +1,54 @@
+/// This module handles authentication-related routes and functions for an Axum-based web application.
+/// It includes routes for logging out, refreshing tokens, rendering authentication-related navigation bars,
+/// checking session status, and mutating user information.
+///
+/// # Routes
+/// - `/logout`: Logs out the user by deleting the session and removing relevant cookies.
+/// - `/refresh_token`: Refreshes the user's session token and CSRF token.
+/// - `/auth_navbar`: Renders the authentication navigation bar based on the user's session status.
+/// - `/check`: Checks if the user is logged in by validating the session.
+/// - `/mutate_user`: Mutates user information based on the provided user token.
+/// - `/logout_content`: Renders a message indicating the user has logged out.
+///
+/// # Functions
+/// - `create_router`: Creates an `ApiRouter` with the defined authentication routes.
+/// - `logout`: Handles the logout process by deleting the session and removing cookies.
+/// - `refresh_token`: Refreshes the session and CSRF tokens, and verifies the user and CSRF tokens.
+/// - `auth_navbar`: Renders the authentication navigation bar based on the user's session status.
+/// - `check`: Checks if the user is logged in by validating the session.
+/// - `mutate_user`: Mutates user information based on the provided user token.
+/// - `logout_content`: Renders a message indicating the user has logged out.
+/// - `get_current_user_from_jar`: Retrieves the current user from the session cookie.
+/// - `jar_to_session`: Converts a `CookieJar` to a `Session`.
+/// - `mutate_session`: Mutates the session if it is about to expire.
+/// - `new_session`: Creates a new session for the user.
+/// - `new_cookie`: Creates new cookies for the session, CSRF token, and user token.
+/// - `hash_email`: Hashes the user's email using SHA-256.
+/// - `hash_nonce`: Hashes a nonce using SHA-256 and a secret salt.
+/// - `csrf_verify`: Verifies the provided CSRF token against the session's CSRF token.
+/// - `user_verify`: Verifies the provided user token against the hashed email in the session.
+///
+/// # Templates
+/// - `NavbarLoginTemplate`: Template for rendering the login navigation bar.
+/// - `NavbarLogoutTemplate`: Template for rendering the logout navigation bar.
+/// - `ContentErrorTemplate`: Template for rendering error messages.
+///
+/// # Structs
+/// - `XCsrfToken`: Represents the CSRF token extracted from the request header.
+/// - `XUserToken`: Represents the user token extracted from the request header.
+///
+/// # Dependencies
+/// - `aide::axum`: Provides routing and response utilities for Axum.
+/// - `askama_axum`: Provides template rendering for Axum using Askama.
+/// - `axum`: Provides the core web framework.
+/// - `axum_extra::extract::cookie`: Provides cookie extraction utilities.
+/// - `cookie`: Provides cookie creation and manipulation utilities.
+/// - `chrono`: Provides date and time utilities.
+/// - `rand`: Provides random number generation utilities.
+/// - `hyper`: Provides HTTP utilities.
+/// - `serde`: Provides serialization and deserialization utilities.
+/// - `sha2`: Provides SHA-256 hashing utilities.
+///
 use aide::axum::{routing::get_with, ApiRouter, IntoApiResponse};
 use askama_axum::Template;
 use axum::{
@@ -50,6 +101,17 @@ pub fn create_router(state: Arc<AppState>) -> ApiRouter {
         .with_state(state)
 }
 
+/// The `logout` function is responsible for terminating the user's session.
+/// It performs the following steps:
+/// 1. Invalidates the current session by removing session data.
+/// 2. Optionally, it may clear cookies or tokens associated with the session.
+/// 3. Logs a message indicating the user has been logged out.
+/// 4. Returns a result indicating the success or failure of the logout operation.
+///
+/// This function ensures that any sensitive session information is properly
+/// cleared, preventing unauthorized access after the user logs out.
+///
+
 async fn logout(
     State(state): State<Arc<AppState>>,
     jar: Option<CookieJar>,
@@ -93,6 +155,22 @@ async fn logout(
         (StatusCode::OK, "No active session found").into_response()
     }
 }
+
+/// This asynchronous function `refresh_token` handles the process of refreshing a user's session token.
+/// It performs several key steps:
+/// 1. Extracts the application state, headers, and optional cookie jar from the request.
+/// 2. Attempts to retrieve the session from the cookie jar using the `jar_to_session` function.
+///    - If unsuccessful, it returns an internal server error response with an appropriate error message.
+/// 3. Extracts and verifies the CSRF token from the headers.
+///    - If the CSRF token is missing or invalid, it returns an internal server error response with an appropriate error message.
+/// 4. Extracts and verifies the user token from the headers.
+///    - If the user token is missing or invalid, it returns an internal server error response with an appropriate error message.
+/// 5. Ensures the cookie jar is present.
+///    - If the cookie jar is missing, it returns an internal server error response with an appropriate error message.
+/// 6. Attempts to mutate the session using the `mutate_session` function.
+///    - If successful, it constructs a JSON response containing the new session ID, CSRF token, and user token.
+///    - If unsuccessful, it returns an internal server error response with an appropriate error message.
+/// 7. Returns the updated cookie jar and the constructed response.
 
 async fn refresh_token(
     State(state): State<Arc<AppState>>,
@@ -203,6 +281,19 @@ struct NavbarLogoutTemplate {
     csrf_token_name: String,
     user_token_name: String,
 }
+
+/// This asynchronous function `auth_navbar` is responsible for generating the navigation bar
+/// for authenticated and unauthenticated users. It takes two parameters:
+/// - `State(state)`: An `Arc` wrapped `AppState` which provides shared state across the application.
+/// - `cookiejar`: An optional `CookieJar` which contains cookies from the user's request.
+///
+/// The function performs the following steps:
+/// 1. It attempts to retrieve the current user from the `cookiejar` using the `get_current_user_from_jar` function.
+/// 2. If a user is found (authenticated), it calls the `auth_navbar_logout` function to generate the logout navigation bar.
+/// 3. If no user is found (unauthenticated), it calls the `auth_navbar_login` function to generate the login navigation bar.
+///
+/// Both `auth_navbar_login` and `auth_navbar_logout` return an `impl IntoApiResponse` which is a response type that can be
+/// converted into an HTTP response. The final response includes any cookies set during the process.
 
 async fn auth_navbar(
     State(state): State<Arc<AppState>>,
@@ -459,6 +550,12 @@ async fn mutate_session(
     new_session(user, state).await
 }
 
+/// This function creates a new session for a user and returns a `CookieJar` containing session cookies.
+/// It takes a `User` object and an `Arc<AppState>` as parameters.
+/// It first attempts to create a session using the `create_session` method of the `cache` in `AppState`.
+/// If successful, it calls `new_cookie` to generate the cookies for the session.
+/// If an error occurs during session creation, it returns an `Error`.
+
 pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> Result<CookieJar, Error> {
     let session = match state
         .cache
@@ -475,6 +572,12 @@ pub(crate) async fn new_session(user: User, state: Arc<AppState>) -> Result<Cook
 
     new_cookie(&session)
 }
+
+/// This function generates a `CookieJar` containing cookies for the session.
+/// It takes a reference to a `Session` object as a parameter.
+/// It creates three cookies: a session cookie, a CSRF token cookie, and a user token cookie.
+/// The cookies are configured with properties like path, security, HTTP-only flag, same-site policy, max age, and expiration time.
+/// The user token cookie contains a hashed version of the user's email.
 
 fn new_cookie(session: &Session) -> Result<CookieJar, Error> {
     let max_age = Duration::seconds(*SESSION_COOKIE_MAX_AGE);
