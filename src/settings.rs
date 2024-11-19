@@ -9,11 +9,12 @@ pub(crate) static GOOGLE_OAUTH2_CLIENT_ID: Lazy<String> = Lazy::new(|| {
 pub(crate) static GOOGLE_OAUTH2_CLIENT_SECRET: Lazy<String> = Lazy::new(|| {
     std::env::var("GOOGLE_OAUTH2_CLIENT_SECRET").expect("GOOGLE_OAUTH2_CLIENT_SECRET must be set")
 });
-
 pub(crate) static OAUTH2_SCOPE: Lazy<String> =
     Lazy::new(|| std::env::var("OAUTH2_SCOPE").unwrap_or("openid+email+profile".to_string()));
 pub(crate) static OAUTH2_RESPONSE_MODE: Lazy<String> =
     Lazy::new(|| std::env::var("OAUTH2_RESPONSE_MODE").unwrap_or("query".to_string()));
+pub(crate) static OAUTH2_RESPONSE_TYPE: Lazy<String> =
+    Lazy::new(|| std::env::var("OAUTH2_RESPONSE_TYPE").unwrap_or("token".to_string()));
 
 // "__Host-" prefix are added to make cookies "host-only".
 pub(crate) static SESSION_COOKIE_NAME: &str = "__Host-SessionId";
