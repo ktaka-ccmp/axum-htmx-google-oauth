@@ -68,7 +68,7 @@ use super::{
     settings::{
         CSRF_COOKIE_MAX_AGE, CSRF_COOKIE_NAME, GOOGLE_OAUTH2_CLIENT_ID,
         GOOGLE_OAUTH2_CLIENT_SECRET, NONCE_COOKIE_MAX_AGE, NONCE_COOKIE_NAME, OAUTH2_AUTH_URL,
-        OAUTH2_RESPONSE_MODE, OAUTH2_SCOPE, OAUTH2_TOKEN_URL, ORIGIN_SERVER,
+        OAUTH2_RESPONSE_MODE, OAUTH2_RESPONSE_TYPE, OAUTH2_SCOPE, OAUTH2_TOKEN_URL, ORIGIN_SERVER,
     },
     user::get_or_create_user,
     AppState as CrateAppState,
@@ -97,7 +97,7 @@ fn app_state_init(crate_app_state: Arc<CrateAppState>) -> AppState {
         redirect_uri: format!("{}/oauth2/google/authorized", *ORIGIN_SERVER),
         auth_url: OAUTH2_AUTH_URL.to_string(),
         token_url: OAUTH2_TOKEN_URL.to_string(),
-        response_type: ResponseType::Code.as_str().to_string(),
+        response_type: OAUTH2_RESPONSE_TYPE.parse().unwrap_or(ResponseType::Code),
         scope: OAUTH2_SCOPE.to_string(),
         nonce: None,
         state: None,
@@ -194,6 +194,7 @@ impl AccessType {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 enum ResponseType {
     None = 0b000,
     Code = 0b001,
@@ -220,6 +221,32 @@ impl ResponseType {
     }
 }
 
+impl std::str::FromStr for ResponseType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "" => Ok(ResponseType::None),
+            "code" => Ok(ResponseType::Code),
+            "token" => Ok(ResponseType::Token),
+            "id_token" => Ok(ResponseType::IdToken),
+            "code token" => Ok(ResponseType::CodeToken),
+            "token code" => Ok(ResponseType::CodeToken),
+            "code id_token" => Ok(ResponseType::CodeIdToken),
+            "id_token code" => Ok(ResponseType::CodeIdToken),
+            "token id_token" => Ok(ResponseType::TokenIdToken),
+            "id_token token" => Ok(ResponseType::TokenIdToken),
+            "code token id_token" => Ok(ResponseType::CodeTokenIdToken),
+            "code id_token token" => Ok(ResponseType::CodeTokenIdToken),
+            "token code id_token" => Ok(ResponseType::CodeTokenIdToken),
+            "token id_token code" => Ok(ResponseType::CodeTokenIdToken),
+            "id_token token code" => Ok(ResponseType::CodeTokenIdToken),
+            "id_token code token" => Ok(ResponseType::CodeTokenIdToken),
+            _ => Err(format!("Invalid value for ResponseType: {}", s)),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct OAuth2Params {
     client_id: String,
@@ -227,7 +254,7 @@ struct OAuth2Params {
     redirect_uri: String,
     auth_url: String,
     token_url: String,
-    response_type: String,
+    response_type: ResponseType,
     scope: String,
     nonce: Option<String>,
     state: Option<String>,
