@@ -14,7 +14,7 @@ pub(crate) static OAUTH2_SCOPE: Lazy<String> =
 pub(crate) static OAUTH2_RESPONSE_MODE: Lazy<String> =
     Lazy::new(|| std::env::var("OAUTH2_RESPONSE_MODE").unwrap_or("query".to_string()));
 pub(crate) static OAUTH2_RESPONSE_TYPE: Lazy<String> =
-    Lazy::new(|| std::env::var("OAUTH2_RESPONSE_TYPE").unwrap_or("token".to_string()));
+    Lazy::new(|| std::env::var("OAUTH2_RESPONSE_TYPE").unwrap_or("code".to_string()));
 
 // "__Host-" prefix are added to make cookies "host-only".
 pub(crate) static SESSION_COOKIE_NAME: &str = "__Host-SessionId";
